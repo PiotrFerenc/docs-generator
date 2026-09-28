@@ -1,0 +1,139 @@
+{
+  "entries": {
+    "T:Orders.Application.SettleOrderHandler": {
+      "guards": [
+        "src/Orders.Application/SettleOrder.cs:14 validation",
+        "src/Orders.Application/SettleOrder.cs:24 fail:OrderNotFoundError",
+        "src/Orders.Domain/Order.cs:31 fail:OrderNotValuedError",
+        "src/Orders.Domain/Order.cs:34 fail:MissingAcceptedPriceError"
+      ],
+      "edges": [
+        "handles T:Orders.Application.SettleOrderCommand",
+        "publishes T:Orders.Domain.OrderSettledEvent",
+        "writes Order.Status [OrderStatus.Settled]",
+        "writes Order.SettledAt",
+        "reads Order.Status",
+        "reads Order.AcceptedPrice"
+      ]
+    },
+    "T:Payments.Application.OrderSettledEventHandler": {
+      "guards": [
+        "src/Payments.Application/OrderSettledEventHandler.cs:13 return"
+      ],
+      "edges": [
+        "handles T:Orders.Domain.OrderSettledEvent",
+        "sends T:Payments.Application.RequestPayoutCommand [logged]"
+      ]
+    },
+    "T:Payments.Application.RequestPayoutHandler": {
+      "guards": [
+        "src/Payments.Application/RequestPayout.cs:16 validation",
+        "src/Payments.Application/RequestPayout.cs:17 validation",
+        "src/Payments.Application/RequestPayout.cs:18 validation",
+        "src/Payments.Application/RequestPayout.cs:32 silent_success",
+        "src/Payments.Application/RequestPayout.cs:35 silent_success",
+        "src/Payments.Infrastructure/PaymentsInfrastructure.cs:35 filter",
+        "src/Payments.Application/RequestPayout.cs:39 fail:AccountNotActiveError",
+        "src/Payments.Infrastructure/PaymentsInfrastructure.cs:27 filter",
+        "src/Payments.Application/RequestPayout.cs:42 fail:KycNotVerifiedError",
+        "src/Payments.Application/RequestPayout.cs:45 fail:MissingIbanError",
+        "src/Payments.Domain/Payments.cs:47 fail:PayoutLimitExceededError"
+      ],
+      "edges": [
+        "handles T:Payments.Application.RequestPayoutCommand",
+        "reads_config Payouts.Enabled",
+        "reads_config Payouts:MaxAmount [default 20_000m]",
+        "publishes T:Payments.Domain.PayoutRequestedEvent",
+        "writes Payout.Id",
+        "writes Payout.OrderId",
+        "writes Payout.CustomerId",
+        "writes Payout.Amount",
+        "writes Payout.Iban",
+        "writes Payout.Status [PayoutStatus.Pending]",
+        "writes Payout.CreatedAt",
+        "insert Payout",
+        "reads CustomerAccount.CustomerId",
+        "reads CustomerAccount.IsBlocked",
+        "reads CustomerAccount.KycStatus",
+        "reads CustomerAccount.Iban",
+        "reads Payout.OrderId",
+        "reads Payout.Status"
+      ]
+    },
+    "T:Payments.Application.ConfirmPayoutHandler": {
+      "guards": [
+        "src/Payments.Application/ConfirmPayout.cs:14 validation",
+        "src/Payments.Application/ConfirmPayout.cs:15 validation",
+        "src/Payments.Application/ConfirmPayout.cs:16 validation",
+        "src/Payments.Application/ConfirmPayout.cs:26 fail:PayoutNotFoundError",
+        "src/Payments.Domain/Payments.cs:66 fail:PayoutAlreadyFinalizedError",
+        "src/Payments.Domain/Payments.cs:76 fail:PayoutAlreadyFinalizedError"
+      ],
+      "edges": [
+        "handles T:Payments.Application.ConfirmPayoutCommand",
+        "writes Payout.Status [PayoutStatus.Completed]",
+        "writes Payout.Status [PayoutStatus.Failed]",
+        "writes Payout.PspReference",
+        "writes Payout.FailureReason",
+        "reads Payout.Status"
+      ]
+    },
+    "POST /orders/{orderId:guid}/settle": {
+      "guards": [],
+      "edges": [
+        "sends T:Orders.Application.SettleOrderCommand [http]"
+      ]
+    },
+    "POST /webhooks/psp/payouts": {
+      "guards": [],
+      "edges": [
+        "sends T:Payments.Application.ConfirmPayoutCommand [http]",
+        "maps ConfirmPayoutCommand.Succeeded [body.Status == \"executed\"]"
+      ]
+    },
+    "T:BuildingBlocks.ValidationBehavior`2": {
+      "guards": [
+        "src/BuildingBlocks/BuildingBlocks.cs:32 return_value",
+        "src/BuildingBlocks/BuildingBlocks.cs:38 return_value"
+      ],
+      "edges": []
+    }
+  },
+  "entities": {
+    "T:Payments.Domain.Payout": {
+      "table": "payouts",
+      "columns": [
+        "Id id",
+        "OrderId order_id",
+        "CustomerId customer_id",
+        "Amount amount",
+        "Iban iban",
+        "Status status",
+        "PspReference psp_reference",
+        "FailureReason failure_reason",
+        "CreatedAt created_at"
+      ],
+      "transitions": [
+        "Status * -> Pending via Payout.Create",
+        "Status Pending -> Completed via Payout.MarkCompleted",
+        "Status Pending -> Failed via Payout.MarkFailed"
+      ]
+    },
+    "T:Payments.Domain.CustomerAccount": {
+      "table": "customer_accounts",
+      "columns": [
+        "CustomerId customer_id",
+        "Iban iban",
+        "KycStatus kyc_status",
+        "IsBlocked is_blocked"
+      ],
+      "transitions": []
+    },
+    "T:Orders.Domain.Order": {
+      "table": null,
+      "transitions": [
+        "Status Valued -> Settled via Order.Settle"
+      ]
+    }
+  }
+}

@@ -1,0 +1,26 @@
+# Example job for the APPLICATION repo's .gitlab-ci.yml.
+# CI/CD variables (masked): DOCGEN__HandlerCard__ApiKey, DOCGEN__EntityCard__ApiKey, DOCGEN__FlowCard__ApiKey,
+# DOCGEN__GlobalRuleCard__ApiKey, DOCGEN__ModuleSummary__ApiKey, DOCGEN__SystemSummary__ApiKey, DOCGEN__Glossary__ApiKey,
+# DOCGEN__Confluence__ApiKey, DOCGEN__Embeddings__ApiKey, DOCGEN__Reranker__ApiKey, DOCGEN__SearchAnswer__ApiKey,
+# DOCGEN__Qdrant__ApiKey (+ BaseAddress/Url overrides if not in appsettings.json).
+docs:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  stage: build
+  variables:
+    DOCGEN_HOME: "$CI_PROJECT_DIR/.docgen-tool"
+    DOCS_COMMIT_DIR: "docs/generated"   # MR: show business-rule changes as git diff
+    DOCGEN_SEARCH: "1"
+    GIT_DEPTH: "0"
+  cache:
+    key: docgen
+    paths: [.docgen/]                   # card cache: unchanged cards are not regenerated
+  before_script:
+    - git clone --depth 1 https://git.example/tools/docs-generator.git "$DOCGEN_HOME"
+  script:
+    - bash "$DOCGEN_HOME/ci/docs.sh"
+  artifacts:
+    paths: [.docgen/docs-out/]
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

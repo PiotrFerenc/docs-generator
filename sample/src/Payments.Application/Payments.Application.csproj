@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.FeatureManagement" Version="4.8.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Payments.Domain/Payments.Domain.csproj" />
+    <ProjectReference Include="../Orders.Domain/Orders.Domain.csproj" />
+  </ItemGroup>
+</Project>

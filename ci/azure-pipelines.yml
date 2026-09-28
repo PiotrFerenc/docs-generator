@@ -1,0 +1,36 @@
+# Example pipeline for the APPLICATION repo. Secret variables (pipeline/library, "keep secret"):
+# DOCGEN__HandlerCard__ApiKey, ..., DOCGEN__Confluence__ApiKey, DOCGEN__Embeddings__ApiKey, ...
+# Secrets are not exposed to scripts automatically - map each one under env: below.
+trigger: [main]
+pr: [main]
+
+pool:
+  vmImage: ubuntu-latest
+container: mcr.microsoft.com/dotnet/sdk:10.0
+
+variables:
+  DOCGEN_HOME: $(Pipeline.Workspace)/docgen
+  DOCS_COMMIT_DIR: docs/generated
+  DOCGEN_SEARCH: "1"
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+  - task: Cache@2
+    inputs:
+      key: 'docgen | "$(Agent.OS)"'
+      restoreKeys: docgen
+      path: .docgen
+  - script: git clone --depth 1 https://git.example/tools/docs-generator.git "$(DOCGEN_HOME)"
+    displayName: Get docgen
+  - script: bash "$(DOCGEN_HOME)/ci/docs.sh"
+    displayName: Generate docs
+    env:
+      DOCGEN__HandlerCard__ApiKey: $(DOCGEN__HandlerCard__ApiKey)
+      DOCGEN__EntityCard__ApiKey: $(DOCGEN__EntityCard__ApiKey)
+      DOCGEN__FlowCard__ApiKey: $(DOCGEN__FlowCard__ApiKey)
+      DOCGEN__Confluence__ApiKey: $(DOCGEN__Confluence__ApiKey)
+      DOCGEN__Embeddings__ApiKey: $(DOCGEN__Embeddings__ApiKey)
+      DOCGEN__SearchAnswer__ApiKey: $(DOCGEN__SearchAnswer__ApiKey)
+  - publish: .docgen/docs-out
+    artifact: docs

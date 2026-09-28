@@ -1,0 +1,44 @@
+{
+  "slug": "RequestPayout",
+  "title": "Zlecenie wypłaty dla klienta",
+  "summary": "Tworzy wypłatę dla klienta za rozliczone zlecenie skupu i przekazuje ją do realizacji przelewem.",
+  "triggers": [
+    "Automatycznie po rozliczeniu zlecenia skupu, jeśli klient wybrał wypłatę przelewem ([[page:T:Payments.Application.OrderSettledEventHandler]]).",
+    "Błąd zwrócony przez ten proces **nie jest pokazywany użytkownikowi ani ponawiany**. Jest tylko zapisywany w logach (szczegóły na stronie [[page:T:Payments.Application.OrderSettledEventHandler]])."
+  ],
+  "triggersNote": null,
+  "mainScenario": "wypłaty są włączone, dla zlecenia nie ma jeszcze wypłaty, klient ma aktywne konto ze zweryfikowaną tożsamością i podanym numerem konta, a kwota mieści się w limicie. System tworzy wypłatę ze statusem *Oczekująca* i przekazuje ją do wysłania przelewem.",
+  "alternativeScenarios": [
+    { "title": "Kwota równa zero lub ujemna", "ruleRef": "reguła 1", "text": "zlecenie wypłaty zostaje odrzucone z błędem." },
+    { "title": "Wypłaty wyłączone", "ruleRef": "reguła 2", "text": "system nic nie robi i **nie zgłasza błędu**. Wypłata nie powstaje." },
+    { "title": "Wypłata dla tego zlecenia już istnieje", "ruleRef": "reguła 3", "text": "system nic nie robi i nie zgłasza błędu. Wyjątek: jeśli poprzednia wypłata zakończyła się niepowodzeniem, powstaje nowa." },
+    { "title": "Konto klienta nie istnieje albo jest zablokowane", "ruleRef": "reguła 4", "text": "błąd, wypłata nie powstaje." },
+    { "title": "Tożsamość klienta niezweryfikowana", "ruleRef": "reguła 5", "text": "błąd, wypłata nie powstaje." },
+    { "title": "Brak numeru konta bankowego", "ruleRef": "reguła 6", "text": "błąd, wypłata nie powstaje." },
+    { "title": "Kwota powyżej limitu", "ruleRef": "reguła 7", "text": "błąd, wypłata nie powstaje." }
+  ],
+  "scenariosNote": null,
+  "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+  "rules": [
+    { "no": 1, "rule": "Kwota wypłaty musi być większa od zera.", "onFail": "Błąd walidacji.", "guardIds": ["G3"] },
+    { "no": 2, "rule": "Wypłaty muszą być włączone w konfiguracji systemu.", "onFail": "Brak akcji, bez błędu.", "guardIds": ["G4"] },
+    { "no": 3, "rule": "Dla zlecenia nie może istnieć wypłata oczekująca ani zrealizowana. Wypłata nieudana nie blokuje nowej.", "onFail": "Brak akcji, bez błędu.", "guardIds": ["G5", "G6"] },
+    { "no": 4, "rule": "Klient musi mieć konto, które nie jest zablokowane.", "onFail": "Błąd „konto nieaktywne”.", "guardIds": ["G8", "G7"] },
+    { "no": 5, "rule": "Klient musi mieć zweryfikowaną tożsamość (KYC).", "onFail": "Błąd „brak weryfikacji KYC”.", "guardIds": ["G9"] },
+    { "no": 6, "rule": "Klient musi mieć podany numer konta bankowego (IBAN).", "onFail": "Błąd „brak numeru konta”.", "guardIds": ["G10"] },
+    { "no": 7, "rule": "Kwota nie może przekraczać limitu jednej wypłaty (domyślnie 20 000, konfigurowalny).", "onFail": "Błąd „przekroczony limit”.", "guardIds": ["G11"] }
+  ],
+  "dismissed": [
+    { "guardId": "G1", "reason": "Techniczny warunek: identyfikator zlecenia nie może być pusty." },
+    { "guardId": "G2", "reason": "Techniczny warunek: identyfikator klienta nie może być pusty." }
+  ],
+  "effects": [
+    "Tworzy [[page:T:Payments.Domain.Payout|wypłatę]] ze statusem *Oczekująca*.",
+    "**Numer konta jest kopiowany do wypłaty w chwili jej utworzenia.** Późniejsza zmiana numeru konta klienta nie zmienia już utworzonej wypłaty.",
+    "Uruchamia wysłanie przelewu do operatora płatności (poza zakresem przykładu)."
+  ],
+  "configMeanings": [
+    { "key": "Payouts.Enabled", "meaning": "feature flag włączający wypłaty" },
+    { "key": "Payouts:MaxAmount", "meaning": "limit jednej wypłaty (`PayoutOptions.MaxAmount`)" }
+  ]
+}

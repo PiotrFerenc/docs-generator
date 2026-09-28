@@ -1,0 +1,1132 @@
+{
+  "commit": "a1b2c3d",
+  "entries": [
+    {
+      "id": "POST /orders/{orderId:guid}/settle",
+      "kind": "endpoint",
+      "module": "Orders",
+      "layer": "Api",
+      "location": "src/Orders.Api/OrderEndpoints.cs:11",
+      "dependencies": [],
+      "guards": [],
+      "edges": [
+        {
+          "type": "sends",
+          "target": "T:Orders.Application.SettleOrderCommand",
+          "detail": "http"
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "OrderEndpoints.MapOrderEndpoints",
+          "location": "src/Orders.Api/OrderEndpoints.cs:11",
+          "endLine": 17,
+          "text": "app.MapPost(\"/orders/{orderId:guid}/settle\", async (Guid orderId, ISender sender, CancellationToken ct) =>\n        {\n            var result = await sender.Send(new SettleOrderCommand(orderId), ct);\n            return result.IsSuccess\n                ? Results.NoContent()\n                : Results.UnprocessableEntity(result.Errors.Select(e => e.Message));\n        })"
+        }
+      ],
+      "hash": "e291ded551deacaf2b60c810cb404222c8744ed93e1145ad7d0d7c3bfc96e11c"
+    },
+    {
+      "id": "POST /webhooks/psp/payouts",
+      "kind": "endpoint",
+      "module": "Payments",
+      "layer": "Api",
+      "location": "src/Payments.Api/PspWebhookEndpoints.cs:14",
+      "dependencies": [],
+      "guards": [],
+      "edges": [
+        {
+          "type": "maps",
+          "target": "ConfirmPayoutCommand.Succeeded",
+          "detail": "body.Status == \"executed\""
+        },
+        {
+          "type": "sends",
+          "target": "T:Payments.Application.ConfirmPayoutCommand",
+          "detail": "http"
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "PspWebhookEndpoints.MapPspWebhookEndpoints",
+          "location": "src/Payments.Api/PspWebhookEndpoints.cs:14",
+          "endLine": 24,
+          "text": "app.MapPost(\"/webhooks/psp/payouts\", async (PspPayoutNotification body, ISender sender, CancellationToken ct) =>\n        {\n            var command = new ConfirmPayoutCommand(\n                body.PayoutId,\n                Succeeded: body.Status == \"executed\",\n                PspReference: body.Reference,\n                FailureReason: body.Reason);\n\n            var result = await sender.Send(command, ct);\n            return result.IsSuccess ? Results.Ok() : Results.UnprocessableEntity(result.Errors.Select(e => e.Message));\n        })"
+        }
+      ],
+      "hash": "12a0e18e3b75ca36daf0e09489521a0edfbb71ad9b926938043b6ec551cd2834"
+    },
+    {
+      "id": "T:BuildingBlocks.ValidationBehavior`2",
+      "kind": "behavior",
+      "module": "BuildingBlocks",
+      "layer": "",
+      "location": "src/BuildingBlocks/BuildingBlocks.cs:25",
+      "dependencies": [
+        "IEnumerable<IValidator<TRequest>>"
+      ],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "if",
+          "condition": "!validators.Any()",
+          "exit": "return_value",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:32",
+          "via": "ValidationBehavior.Handle",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "if",
+          "condition": "failures.Count == 0",
+          "exit": "return_value",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:38",
+          "via": "ValidationBehavior.Handle",
+          "structured": {
+            "left": "failures.Count",
+            "op": "==",
+            "right": "0"
+          }
+        }
+      ],
+      "edges": [],
+      "chunks": [
+        {
+          "symbol": "ValidationBehavior.Handle",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:30",
+          "endLine": 45,
+          "text": "public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)\n    {\n        if (!validators.Any())\n            return await next();\n\n        var context = new ValidationContext<TRequest>(request);\n        var results = await Task.WhenAll(validators.Select(v => v.ValidateAsync(context, ct)));\n        var failures = results.SelectMany(r => r.Errors).ToList();\n        if (failures.Count == 0)\n            return await next();\n\n        var response = new TResponse();\n        response.Reasons.AddRange(failures.Select(f =>\n            new Error(f.ErrorMessage).WithMetadata(\"Property\", f.PropertyName)));\n        return response;\n    }"
+        }
+      ],
+      "hash": "8e9950c3be6416c0434ac4ade6b986d79187ea216f167640a4e70258b8a413e8"
+    },
+    {
+      "id": "T:Orders.Application.SettleOrderCommandValidator",
+      "kind": "validator",
+      "module": "Orders",
+      "layer": "Application",
+      "location": "src/Orders.Application/SettleOrder.cs:10",
+      "dependencies": [],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.OrderId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Orders.Application/SettleOrder.cs:14",
+          "via": "SettleOrderCommandValidator..ctor",
+          "structured": null
+        }
+      ],
+      "edges": [
+        {
+          "type": "validates",
+          "target": "T:Orders.Application.SettleOrderCommand",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "SettleOrderCommandValidator..ctor",
+          "location": "src/Orders.Application/SettleOrder.cs:12",
+          "endLine": 15,
+          "text": "public SettleOrderCommandValidator()\n    {\n        RuleFor(x => x.OrderId).NotEmpty();\n    }"
+        }
+      ],
+      "hash": "404d3e64af6de47505db181803c7aff3011308068f1dd630e20c462b44ab1d29"
+    },
+    {
+      "id": "T:Orders.Application.SettleOrderHandler",
+      "kind": "request_handler",
+      "module": "Orders",
+      "layer": "Application",
+      "location": "src/Orders.Application/SettleOrder.cs:18",
+      "dependencies": [
+        "IOrderRepository",
+        "TimeProvider"
+      ],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.OrderId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Orders.Application/SettleOrder.cs:14",
+          "via": "SettleOrderCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "if",
+          "condition": "order is null",
+          "exit": "fail:OrderNotFoundError",
+          "location": "src/Orders.Application/SettleOrder.cs:24",
+          "via": "SettleOrderHandler.Handle",
+          "structured": {
+            "left": "order",
+            "op": "is_null",
+            "right": null
+          }
+        },
+        {
+          "id": "G3",
+          "kind": "if",
+          "condition": "Status != OrderStatus.Valued",
+          "exit": "fail:OrderNotValuedError",
+          "location": "src/Orders.Domain/Order.cs:31",
+          "via": "Order.Settle",
+          "structured": {
+            "left": "Order.Status",
+            "op": "!=",
+            "right": "OrderStatus.Valued"
+          }
+        },
+        {
+          "id": "G4",
+          "kind": "if",
+          "condition": "AcceptedPrice is null or <= 0m",
+          "exit": "fail:MissingAcceptedPriceError",
+          "location": "src/Orders.Domain/Order.cs:34",
+          "via": "Order.Settle",
+          "structured": null
+        },
+        {
+          "id": "G5",
+          "kind": "if",
+          "condition": "result.IsFailed",
+          "exit": "propagate",
+          "location": "src/Orders.Application/SettleOrder.cs:28",
+          "via": "SettleOrderHandler.Handle",
+          "structured": {
+            "left": "result.IsFailed",
+            "op": "is_true",
+            "right": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "type": "handles",
+          "target": "T:Orders.Application.SettleOrderCommand",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Order.Status",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Order.Id",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Order.AcceptedPrice",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Order.Status",
+          "detail": "OrderStatus.Settled"
+        },
+        {
+          "type": "writes",
+          "target": "Order.SettledAt",
+          "detail": null
+        },
+        {
+          "type": "publishes",
+          "target": "T:Orders.Domain.OrderSettledEvent",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Order.CustomerId",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Order.PayoutMethod",
+          "detail": null
+        },
+        {
+          "type": "behavior",
+          "target": "T:BuildingBlocks.ValidationBehavior`2",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "SettleOrderCommandValidator..ctor",
+          "location": "src/Orders.Application/SettleOrder.cs:12",
+          "endLine": 15,
+          "text": "public SettleOrderCommandValidator()\n    {\n        RuleFor(x => x.OrderId).NotEmpty();\n    }"
+        },
+        {
+          "symbol": "SettleOrderHandler.Handle",
+          "location": "src/Orders.Application/SettleOrder.cs:21",
+          "endLine": 33,
+          "text": "public async Task<Result> Handle(SettleOrderCommand command, CancellationToken ct)\n    {\n        var order = await orders.GetByIdAsync(command.OrderId, ct);\n        if (order is null)\n            return Result.Fail(new OrderNotFoundError(command.OrderId));\n\n        var result = order.Settle(clock.GetUtcNow().UtcDateTime);\n        if (result.IsFailed)\n            return result;\n\n        await orders.SaveChangesAsync(ct);\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "Order.Settle",
+          "location": "src/Orders.Domain/Order.cs:29",
+          "endLine": 41,
+          "text": "public Result Settle(DateTime now)\n    {\n        if (Status != OrderStatus.Valued)\n            return Result.Fail(new OrderNotValuedError(Id, Status));\n\n        if (AcceptedPrice is null or <= 0m)\n            return Result.Fail(new MissingAcceptedPriceError(Id));\n\n        Status = OrderStatus.Settled;\n        SettledAt = now;\n        Raise(new OrderSettledEvent(Id, CustomerId, AcceptedPrice.Value, PayoutMethod));\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "AggregateRoot.Raise",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:17",
+          "endLine": 17,
+          "text": "protected void Raise(IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);"
+        }
+      ],
+      "hash": "e9d92745fbe33acbae97b9df7e2f8b43f8c21646373acd571b7d69061474a498"
+    },
+    {
+      "id": "T:Payments.Application.ConfirmPayoutCommandValidator",
+      "kind": "validator",
+      "module": "Payments",
+      "layer": "Application",
+      "location": "src/Payments.Application/ConfirmPayout.cs:10",
+      "dependencies": [],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.PayoutId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:14",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:15",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G3",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:16",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        }
+      ],
+      "edges": [
+        {
+          "type": "validates",
+          "target": "T:Payments.Application.ConfirmPayoutCommand",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "ConfirmPayoutCommandValidator..ctor",
+          "location": "src/Payments.Application/ConfirmPayout.cs:12",
+          "endLine": 17,
+          "text": "public ConfirmPayoutCommandValidator()\n    {\n        RuleFor(x => x.PayoutId).NotEmpty();\n        RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded);\n        RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded);\n    }"
+        }
+      ],
+      "hash": "cc5d1c9d528093ddf33a2b459649370b0d9d37711c132285277104ddfa038fc2"
+    },
+    {
+      "id": "T:Payments.Application.ConfirmPayoutHandler",
+      "kind": "request_handler",
+      "module": "Payments",
+      "layer": "Application",
+      "location": "src/Payments.Application/ConfirmPayout.cs:20",
+      "dependencies": [
+        "IPayoutRepository"
+      ],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.PayoutId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:14",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:15",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G3",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)",
+          "exit": "validation",
+          "location": "src/Payments.Application/ConfirmPayout.cs:16",
+          "via": "ConfirmPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G4",
+          "kind": "filter",
+          "condition": "FirstOrDefaultAsync(p => p.Id == payoutId)",
+          "exit": "filter",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:38",
+          "via": "PayoutRepository.GetByIdAsync",
+          "structured": null
+        },
+        {
+          "id": "G5",
+          "kind": "if",
+          "condition": "payout is null",
+          "exit": "fail:PayoutNotFoundError",
+          "location": "src/Payments.Application/ConfirmPayout.cs:26",
+          "via": "ConfirmPayoutHandler.Handle",
+          "structured": {
+            "left": "payout",
+            "op": "is_null",
+            "right": null
+          }
+        },
+        {
+          "id": "G6",
+          "kind": "if",
+          "condition": "Status != PayoutStatus.Pending",
+          "exit": "fail:PayoutAlreadyFinalizedError",
+          "location": "src/Payments.Domain/Payments.cs:66",
+          "via": "Payout.MarkCompleted",
+          "structured": {
+            "left": "Payout.Status",
+            "op": "!=",
+            "right": "PayoutStatus.Pending"
+          }
+        },
+        {
+          "id": "G7",
+          "kind": "if",
+          "condition": "Status != PayoutStatus.Pending",
+          "exit": "fail:PayoutAlreadyFinalizedError",
+          "location": "src/Payments.Domain/Payments.cs:76",
+          "via": "Payout.MarkFailed",
+          "structured": {
+            "left": "Payout.Status",
+            "op": "!=",
+            "right": "PayoutStatus.Pending"
+          }
+        },
+        {
+          "id": "G8",
+          "kind": "if",
+          "condition": "result.IsFailed",
+          "exit": "propagate",
+          "location": "src/Payments.Application/ConfirmPayout.cs:32",
+          "via": "ConfirmPayoutHandler.Handle",
+          "structured": {
+            "left": "result.IsFailed",
+            "op": "is_true",
+            "right": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "type": "handles",
+          "target": "T:Payments.Application.ConfirmPayoutCommand",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Payout.Id",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Payout.Status",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Status",
+          "detail": "PayoutStatus.Completed"
+        },
+        {
+          "type": "writes",
+          "target": "Payout.PspReference",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Status",
+          "detail": "PayoutStatus.Failed"
+        },
+        {
+          "type": "writes",
+          "target": "Payout.FailureReason",
+          "detail": null
+        },
+        {
+          "type": "behavior",
+          "target": "T:BuildingBlocks.ValidationBehavior`2",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "ConfirmPayoutCommandValidator..ctor",
+          "location": "src/Payments.Application/ConfirmPayout.cs:12",
+          "endLine": 17,
+          "text": "public ConfirmPayoutCommandValidator()\n    {\n        RuleFor(x => x.PayoutId).NotEmpty();\n        RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded);\n        RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded);\n    }"
+        },
+        {
+          "symbol": "ConfirmPayoutHandler.Handle",
+          "location": "src/Payments.Application/ConfirmPayout.cs:23",
+          "endLine": 37,
+          "text": "public async Task<Result> Handle(ConfirmPayoutCommand command, CancellationToken ct)\n    {\n        var payout = await payouts.GetByIdAsync(command.PayoutId, ct);\n        if (payout is null)\n            return Result.Fail(new PayoutNotFoundError(command.PayoutId));\n\n        var result = command.Succeeded\n            ? payout.MarkCompleted(command.PspReference!)\n            : payout.MarkFailed(command.FailureReason!);\n        if (result.IsFailed)\n            return result;\n\n        await payouts.SaveChangesAsync(ct);\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "PayoutRepository.GetByIdAsync",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:37",
+          "endLine": 38,
+          "text": "public Task<Payout?> GetByIdAsync(Guid payoutId, CancellationToken ct) =>\n        db.Payouts.FirstOrDefaultAsync(p => p.Id == payoutId, ct);"
+        },
+        {
+          "symbol": "Payout.MarkCompleted",
+          "location": "src/Payments.Domain/Payments.cs:64",
+          "endLine": 72,
+          "text": "public Result MarkCompleted(string pspReference)\n    {\n        if (Status != PayoutStatus.Pending)\n            return Result.Fail(new PayoutAlreadyFinalizedError(Id, Status));\n\n        Status = PayoutStatus.Completed;\n        PspReference = pspReference;\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "Payout.MarkFailed",
+          "location": "src/Payments.Domain/Payments.cs:74",
+          "endLine": 82,
+          "text": "public Result MarkFailed(string reason)\n    {\n        if (Status != PayoutStatus.Pending)\n            return Result.Fail(new PayoutAlreadyFinalizedError(Id, Status));\n\n        Status = PayoutStatus.Failed;\n        FailureReason = reason;\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "PayoutRepository.SaveChangesAsync",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:42",
+          "endLine": 42,
+          "text": "public Task SaveChangesAsync(CancellationToken ct) => db.SaveChangesAsync(ct);"
+        }
+      ],
+      "hash": "f5a5829007834ea3bf1daaa2a3c7b522f04c78f624ddcd802b896691e8500723"
+    },
+    {
+      "id": "T:Payments.Application.OrderSettledEventHandler",
+      "kind": "event_handler",
+      "module": "Payments",
+      "layer": "Application",
+      "location": "src/Payments.Application/OrderSettledEventHandler.cs:7",
+      "dependencies": [
+        "ISender",
+        "ILogger<OrderSettledEventHandler>"
+      ],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "if",
+          "condition": "notification.PayoutMethod != PayoutMethod.BankTransfer",
+          "exit": "return",
+          "location": "src/Payments.Application/OrderSettledEventHandler.cs:13",
+          "via": "OrderSettledEventHandler.Handle",
+          "structured": {
+            "left": "notification.PayoutMethod",
+            "op": "!=",
+            "right": "PayoutMethod.BankTransfer"
+          }
+        }
+      ],
+      "edges": [
+        {
+          "type": "handles",
+          "target": "T:Orders.Domain.OrderSettledEvent",
+          "detail": null
+        },
+        {
+          "type": "sends",
+          "target": "T:Payments.Application.RequestPayoutCommand",
+          "detail": "logged"
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "OrderSettledEventHandler.Handle",
+          "location": "src/Payments.Application/OrderSettledEventHandler.cs:10",
+          "endLine": 24,
+          "text": "public async Task Handle(OrderSettledEvent notification, CancellationToken ct)\n    {\n        // Vouchers are issued by the Vouchers module.\n        if (notification.PayoutMethod != PayoutMethod.BankTransfer)\n            return;\n\n        var result = await sender.Send(\n            new RequestPayoutCommand(notification.OrderId, notification.CustomerId, notification.Amount), ct);\n\n        if (result.IsFailed)\n            logger.LogWarning(\n                \"Payout for order {OrderId} was not requested: {Errors}\",\n                notification.OrderId,\n                string.Join(\"; \", result.Errors.Select(e => e.Message)));\n    }"
+        }
+      ],
+      "hash": "25c0f2efec7f869908ca9445d05d2d319a70232cf1403976463549a14c6baebe"
+    },
+    {
+      "id": "T:Payments.Application.RequestPayoutCommandValidator",
+      "kind": "validator",
+      "module": "Payments",
+      "layer": "Application",
+      "location": "src/Payments.Application/RequestPayout.cs:12",
+      "dependencies": [],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.OrderId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:16",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.CustomerId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:17",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G3",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.Amount).GreaterThan(0)",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:18",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        }
+      ],
+      "edges": [
+        {
+          "type": "validates",
+          "target": "T:Payments.Application.RequestPayoutCommand",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "RequestPayoutCommandValidator..ctor",
+          "location": "src/Payments.Application/RequestPayout.cs:14",
+          "endLine": 19,
+          "text": "public RequestPayoutCommandValidator()\n    {\n        RuleFor(x => x.OrderId).NotEmpty();\n        RuleFor(x => x.CustomerId).NotEmpty();\n        RuleFor(x => x.Amount).GreaterThan(0);\n    }"
+        }
+      ],
+      "hash": "7717e25b32399bad33eeb8467d407229ad019b32aff9f3da4a7390c46621b107"
+    },
+    {
+      "id": "T:Payments.Application.RequestPayoutHandler",
+      "kind": "request_handler",
+      "module": "Payments",
+      "layer": "Application",
+      "location": "src/Payments.Application/RequestPayout.cs:22",
+      "dependencies": [
+        "ICustomerAccountRepository",
+        "IPayoutRepository",
+        "IFeatureManager",
+        "IOptions<PayoutOptions>",
+        "TimeProvider"
+      ],
+      "guards": [
+        {
+          "id": "G1",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.OrderId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:16",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G2",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.CustomerId).NotEmpty()",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:17",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G3",
+          "kind": "rule",
+          "condition": "RuleFor(x => x.Amount).GreaterThan(0)",
+          "exit": "validation",
+          "location": "src/Payments.Application/RequestPayout.cs:18",
+          "via": "RequestPayoutCommandValidator..ctor",
+          "structured": null
+        },
+        {
+          "id": "G4",
+          "kind": "if",
+          "condition": "!await features.IsEnabledAsync(\"Payouts.Enabled\")",
+          "exit": "silent_success",
+          "location": "src/Payments.Application/RequestPayout.cs:32",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": null
+        },
+        {
+          "id": "G5",
+          "kind": "if",
+          "condition": "await payouts.ExistsForOrderAsync(command.OrderId, ct)",
+          "exit": "silent_success",
+          "location": "src/Payments.Application/RequestPayout.cs:35",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": null
+        },
+        {
+          "id": "G6",
+          "kind": "filter",
+          "condition": "AnyAsync(p => p.OrderId == orderId && p.Status != PayoutStatus.Failed)",
+          "exit": "filter",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:35",
+          "via": "PayoutRepository.ExistsForOrderAsync",
+          "structured": null
+        },
+        {
+          "id": "G7",
+          "kind": "filter",
+          "condition": "Where(a => a.CustomerId == customerId && !a.IsBlocked)",
+          "exit": "filter",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:27",
+          "via": "CustomerAccountRepository.GetActiveAsync",
+          "structured": null
+        },
+        {
+          "id": "G8",
+          "kind": "if",
+          "condition": "account is null",
+          "exit": "fail:AccountNotActiveError",
+          "location": "src/Payments.Application/RequestPayout.cs:39",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": {
+            "left": "account",
+            "op": "is_null",
+            "right": null
+          }
+        },
+        {
+          "id": "G9",
+          "kind": "if",
+          "condition": "account.KycStatus != KycStatus.Verified",
+          "exit": "fail:KycNotVerifiedError",
+          "location": "src/Payments.Application/RequestPayout.cs:42",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": {
+            "left": "CustomerAccount.KycStatus",
+            "op": "!=",
+            "right": "KycStatus.Verified"
+          }
+        },
+        {
+          "id": "G10",
+          "kind": "if",
+          "condition": "string.IsNullOrWhiteSpace(account.Iban)",
+          "exit": "fail:MissingIbanError",
+          "location": "src/Payments.Application/RequestPayout.cs:45",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": {
+            "left": "CustomerAccount.Iban",
+            "op": "is_empty",
+            "right": null
+          }
+        },
+        {
+          "id": "G11",
+          "kind": "if",
+          "condition": "amount > maxAmount",
+          "exit": "fail:PayoutLimitExceededError",
+          "location": "src/Payments.Domain/Payments.cs:47",
+          "via": "Payout.Create",
+          "structured": null
+        },
+        {
+          "id": "G12",
+          "kind": "if",
+          "condition": "payout.IsFailed",
+          "exit": "propagate",
+          "location": "src/Payments.Application/RequestPayout.cs:55",
+          "via": "RequestPayoutHandler.Handle",
+          "structured": {
+            "left": "payout.IsFailed",
+            "op": "is_true",
+            "right": null
+          }
+        }
+      ],
+      "edges": [
+        {
+          "type": "handles",
+          "target": "T:Payments.Application.RequestPayoutCommand",
+          "detail": null
+        },
+        {
+          "type": "reads_config",
+          "target": "Payouts.Enabled",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Payout.OrderId",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Payout.Status",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "CustomerAccount.CustomerId",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "CustomerAccount.IsBlocked",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "CustomerAccount.KycStatus",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "CustomerAccount.Iban",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Id",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.OrderId",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.CustomerId",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Amount",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Iban",
+          "detail": null
+        },
+        {
+          "type": "writes",
+          "target": "Payout.Status",
+          "detail": "PayoutStatus.Pending"
+        },
+        {
+          "type": "writes",
+          "target": "Payout.CreatedAt",
+          "detail": null
+        },
+        {
+          "type": "publishes",
+          "target": "T:Payments.Domain.PayoutRequestedEvent",
+          "detail": null
+        },
+        {
+          "type": "reads",
+          "target": "Payout.Id",
+          "detail": null
+        },
+        {
+          "type": "reads_config",
+          "target": "Payouts:MaxAmount",
+          "detail": "default 20_000m"
+        },
+        {
+          "type": "insert",
+          "target": "Payout",
+          "detail": null
+        },
+        {
+          "type": "behavior",
+          "target": "T:BuildingBlocks.ValidationBehavior`2",
+          "detail": null
+        }
+      ],
+      "chunks": [
+        {
+          "symbol": "RequestPayoutCommandValidator..ctor",
+          "location": "src/Payments.Application/RequestPayout.cs:14",
+          "endLine": 19,
+          "text": "public RequestPayoutCommandValidator()\n    {\n        RuleFor(x => x.OrderId).NotEmpty();\n        RuleFor(x => x.CustomerId).NotEmpty();\n        RuleFor(x => x.Amount).GreaterThan(0);\n    }"
+        },
+        {
+          "symbol": "RequestPayoutHandler.Handle",
+          "location": "src/Payments.Application/RequestPayout.cs:30",
+          "endLine": 61,
+          "text": "public async Task<Result> Handle(RequestPayoutCommand command, CancellationToken ct)\n    {\n        if (!await features.IsEnabledAsync(\"Payouts.Enabled\"))\n            return Result.Ok();\n\n        if (await payouts.ExistsForOrderAsync(command.OrderId, ct))\n            return Result.Ok();\n\n        var account = await accounts.GetActiveAsync(command.CustomerId, ct);\n        if (account is null)\n            return Result.Fail(new AccountNotActiveError(command.CustomerId));\n\n        if (account.KycStatus != KycStatus.Verified)\n            return Result.Fail(new KycNotVerifiedError(command.CustomerId));\n\n        if (string.IsNullOrWhiteSpace(account.Iban))\n            return Result.Fail(new MissingIbanError(command.CustomerId));\n\n        var payout = Payout.Create(\n            command.OrderId,\n            command.CustomerId,\n            command.Amount,\n            account.Iban,\n            options.Value.MaxAmount,\n            clock.GetUtcNow().UtcDateTime);\n        if (payout.IsFailed)\n            return payout.ToResult();\n\n        payouts.Add(payout.Value);\n        await payouts.SaveChangesAsync(ct);\n        return Result.Ok();\n    }"
+        },
+        {
+          "symbol": "PayoutRepository.ExistsForOrderAsync",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:34",
+          "endLine": 35,
+          "text": "public Task<bool> ExistsForOrderAsync(Guid orderId, CancellationToken ct) =>\n        db.Payouts.AnyAsync(p => p.OrderId == orderId && p.Status != PayoutStatus.Failed, ct);"
+        },
+        {
+          "symbol": "CustomerAccountRepository.GetActiveAsync",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:25",
+          "endLine": 28,
+          "text": "public Task<CustomerAccount?> GetActiveAsync(Guid customerId, CancellationToken ct) =>\n        db.CustomerAccounts\n            .Where(a => a.CustomerId == customerId && !a.IsBlocked)\n            .FirstOrDefaultAsync(ct);"
+        },
+        {
+          "symbol": "Payout.Create",
+          "location": "src/Payments.Domain/Payments.cs:44",
+          "endLine": 62,
+          "text": "public static Result<Payout> Create(\n        Guid orderId, Guid customerId, decimal amount, string iban, decimal maxAmount, DateTime now)\n    {\n        if (amount > maxAmount)\n            return Result.Fail<Payout>(new PayoutLimitExceededError(orderId, amount, maxAmount));\n\n        var payout = new Payout\n        {\n            Id = Guid.NewGuid(),\n            OrderId = orderId,\n            CustomerId = customerId,\n            Amount = amount,\n            Iban = iban,\n            Status = PayoutStatus.Pending,\n            CreatedAt = now\n        };\n        payout.Raise(new PayoutRequestedEvent(payout.Id));\n        return Result.Ok(payout);\n    }"
+        },
+        {
+          "symbol": "AggregateRoot.Raise",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:17",
+          "endLine": 17,
+          "text": "protected void Raise(IDomainEvent domainEvent) => _domainEvents.Add(domainEvent);"
+        },
+        {
+          "symbol": "PayoutRepository.Add",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:40",
+          "endLine": 40,
+          "text": "public void Add(Payout payout) => db.Payouts.Add(payout);"
+        },
+        {
+          "symbol": "PayoutRepository.SaveChangesAsync",
+          "location": "src/Payments.Infrastructure/PaymentsInfrastructure.cs:42",
+          "endLine": 42,
+          "text": "public Task SaveChangesAsync(CancellationToken ct) => db.SaveChangesAsync(ct);"
+        }
+      ],
+      "hash": "a27f14eb0573d480cc6889d38ecaaf7148dd9c1addf53bd841d77e458e00dea9"
+    }
+  ],
+  "entities": [
+    {
+      "id": "T:Orders.Domain.Order",
+      "name": "Order",
+      "module": "Orders",
+      "location": "src/Orders.Domain/Order.cs:20",
+      "table": null,
+      "fields": [
+        {
+          "name": "Id",
+          "type": "Guid",
+          "column": null,
+          "enumValues": null
+        },
+        {
+          "name": "CustomerId",
+          "type": "Guid",
+          "column": null,
+          "enumValues": null
+        },
+        {
+          "name": "Status",
+          "type": "OrderStatus",
+          "column": null,
+          "enumValues": [
+            "Received",
+            "Valued",
+            "Settled",
+            "Cancelled"
+          ]
+        },
+        {
+          "name": "PayoutMethod",
+          "type": "PayoutMethod",
+          "column": null,
+          "enumValues": [
+            "BankTransfer",
+            "Voucher"
+          ]
+        },
+        {
+          "name": "AcceptedPrice",
+          "type": "decimal?",
+          "column": null,
+          "enumValues": null
+        },
+        {
+          "name": "SettledAt",
+          "type": "DateTime?",
+          "column": null,
+          "enumValues": null
+        }
+      ],
+      "transitions": [
+        {
+          "field": "Status",
+          "from": "Valued",
+          "to": "Settled",
+          "method": "Order.Settle",
+          "location": "src/Orders.Domain/Order.cs:37",
+          "condition": "Status != OrderStatus.Valued"
+        }
+      ],
+      "raisedEvents": [
+        "T:Orders.Domain.OrderSettledEvent"
+      ]
+    },
+    {
+      "id": "T:Payments.Domain.CustomerAccount",
+      "name": "CustomerAccount",
+      "module": "Payments",
+      "location": "src/Payments.Domain/Payments.cs:13",
+      "table": "customer_accounts",
+      "fields": [
+        {
+          "name": "CustomerId",
+          "type": "Guid",
+          "column": "customer_id",
+          "enumValues": null
+        },
+        {
+          "name": "Iban",
+          "type": "string?",
+          "column": "iban",
+          "enumValues": null
+        },
+        {
+          "name": "KycStatus",
+          "type": "KycStatus",
+          "column": "kyc_status",
+          "enumValues": [
+            "Pending",
+            "Verified",
+            "Rejected"
+          ]
+        },
+        {
+          "name": "IsBlocked",
+          "type": "bool",
+          "column": "is_blocked",
+          "enumValues": null
+        }
+      ],
+      "transitions": [],
+      "raisedEvents": []
+    },
+    {
+      "id": "T:Payments.Domain.Payout",
+      "name": "Payout",
+      "module": "Payments",
+      "location": "src/Payments.Domain/Payments.cs:28",
+      "table": "payouts",
+      "fields": [
+        {
+          "name": "Id",
+          "type": "Guid",
+          "column": "id",
+          "enumValues": null
+        },
+        {
+          "name": "OrderId",
+          "type": "Guid",
+          "column": "order_id",
+          "enumValues": null
+        },
+        {
+          "name": "CustomerId",
+          "type": "Guid",
+          "column": "customer_id",
+          "enumValues": null
+        },
+        {
+          "name": "Amount",
+          "type": "decimal",
+          "column": "amount",
+          "enumValues": null
+        },
+        {
+          "name": "Iban",
+          "type": "string",
+          "column": "iban",
+          "enumValues": null
+        },
+        {
+          "name": "Status",
+          "type": "PayoutStatus",
+          "column": "status",
+          "enumValues": [
+            "Pending",
+            "Completed",
+            "Failed"
+          ]
+        },
+        {
+          "name": "PspReference",
+          "type": "string?",
+          "column": "psp_reference",
+          "enumValues": null
+        },
+        {
+          "name": "FailureReason",
+          "type": "string?",
+          "column": "failure_reason",
+          "enumValues": null
+        },
+        {
+          "name": "CreatedAt",
+          "type": "DateTime",
+          "column": "created_at",
+          "enumValues": null
+        }
+      ],
+      "transitions": [
+        {
+          "field": "Status",
+          "from": null,
+          "to": "Pending",
+          "method": "Payout.Create",
+          "location": "src/Payments.Domain/Payments.cs:57",
+          "condition": "amount > maxAmount"
+        },
+        {
+          "field": "Status",
+          "from": "Pending",
+          "to": "Completed",
+          "method": "Payout.MarkCompleted",
+          "location": "src/Payments.Domain/Payments.cs:69",
+          "condition": "Status != PayoutStatus.Pending"
+        },
+        {
+          "field": "Status",
+          "from": "Pending",
+          "to": "Failed",
+          "method": "Payout.MarkFailed",
+          "location": "src/Payments.Domain/Payments.cs:79",
+          "condition": "Status != PayoutStatus.Pending"
+        }
+      ],
+      "raisedEvents": [
+        "T:Payments.Domain.PayoutRequestedEvent"
+      ]
+    }
+  ],
+  "config": [
+    {
+      "key": "Payouts.Enabled",
+      "kind": "feature_flag",
+      "default": null,
+      "location": "src/Payments.Application/RequestPayout.cs:32"
+    },
+    {
+      "key": "Payouts:MaxAmount",
+      "kind": "option",
+      "default": "20_000m",
+      "location": "src/Payments.Application/Abstractions.cs:22"
+    }
+  ]
+}

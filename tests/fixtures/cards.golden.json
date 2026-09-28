@@ -1,0 +1,1196 @@
+{
+  "commit": "a1b2c3d",
+  "useCases": [
+    {
+      "pageId": "T:Orders.Application.SettleOrderHandler",
+      "module": "Orders",
+      "slug": "SettleOrder",
+      "title": "Rozliczenie zlecenia skupu",
+      "summary": "Zamyka zlecenie skupu po zaakceptowaniu wyceny przez klienta i uruchamia wypłatę pieniędzy.",
+      "triggers": [
+        "Ręcznie: specjalista od wyceny rozlicza zlecenie, gdy klient zaakceptował zaproponowaną cenę."
+      ],
+      "triggersNote": null,
+      "mainScenario": "zlecenie istnieje, jest wycenione i ma zaakceptowaną cenę większą od zera. System oznacza zlecenie jako *Rozliczone*, zapisuje datę rozliczenia i w tle uruchamia wypłatę.",
+      "alternativeScenarios": [
+        {
+          "title": "Zlecenie nie istnieje",
+          "ruleRef": "reguła 1",
+          "text": "błąd, nic się nie zmienia."
+        },
+        {
+          "title": "Zlecenie nie jest w stanie „Wycenione”",
+          "ruleRef": "reguła 2",
+          "text": ", np. już rozliczone albo anulowane: błąd, nic się nie zmienia."
+        },
+        {
+          "title": "Brak zaakceptowanej ceny albo cena nie jest większa od zera",
+          "ruleRef": "reguła 3",
+          "text": "błąd, nic się nie zmienia."
+        }
+      ],
+      "scenariosNote": "Specjalista dostaje potwierdzenie rozliczenia, zanim wypłata zostanie zlecona. **Udane rozliczenie nie oznacza, że wypłata powstała** (patrz [[page:T:Payments.Application.OrderSettledEventHandler]]).",
+      "rulesIntro": null,
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Zlecenie musi istnieć.",
+          "onFail": "Błąd „nie znaleziono zlecenia”.",
+          "guardIds": [
+            "G1"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Zlecenie musi mieć status *Wycenione*.",
+          "onFail": "Błąd „zlecenie nie może zostać rozliczone”.",
+          "guardIds": [
+            "G2"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Zlecenie musi mieć zaakceptowaną cenę większą od zera.",
+          "onFail": "Błąd „brak zaakceptowanej ceny”.",
+          "guardIds": [
+            "G3"
+          ]
+        }
+      ],
+      "effects": [
+        "Zmienia status zlecenia na *Rozliczone* i zapisuje datę rozliczenia.",
+        "Po zapisie uruchamia [[page:T:Payments.Application.OrderSettledEventHandler]] (oraz obsługę bonów w module bonów, poza zakresem przykładu)."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Orders.Application.SettleOrderHandler` ([[code:src/Orders.Application/SettleOrder.cs:18|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`SettleOrderCommand(OrderId)` → `Result`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`SettleOrderCommandValidator` ([[code:src/Orders.Application/SettleOrder.cs:10|kod]])"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`POST /orders/{orderId}/settle` ([[code:src/Orders.Api/OrderEndpoints.cs:11|kod]]); błąd → HTTP 422 z komunikatami"
+          },
+          {
+            "key": "Publikuje",
+            "value": "`OrderSettledEvent(OrderId, CustomerId, Amount, PayoutMethod)` (z `Order.Settle`, po commicie)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`IOrderRepository`, `TimeProvider`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`order is null`",
+            "exit": "`OrderNotFoundError`",
+            "locations": [
+              "src/Orders.Application/SettleOrder.cs:24"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`Status != OrderStatus.Valued` w `Order.Settle`",
+            "exit": "`OrderNotValuedError`",
+            "locations": [
+              "src/Orders.Domain/Order.cs:31"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`AcceptedPrice is null or <= 0m` w `Order.Settle`",
+            "exit": "`MissingAcceptedPriceError`",
+            "locations": [
+              "src/Orders.Domain/Order.cs:34"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.OrderId).NotEmpty()` ([[code:src/Orders.Application/SettleOrder.cs:14|SettleOrder.cs:14]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`orders`",
+            "columns": "`id`, `status`, `accepted_price`, `customer_id`, `payout_method`"
+          },
+          {
+            "operation": "zapis (update)",
+            "table": "`orders`",
+            "columns": "`status` → `Settled`, `settled_at`"
+          }
+        ],
+        "dataNote": null,
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.OrderSettledEventHandler",
+      "module": "Payments",
+      "slug": "StartPayoutAfterSettlement",
+      "title": "Start wypłaty po rozliczeniu zlecenia",
+      "summary": "Po rozliczeniu zlecenia skupu uruchamia wypłatę przelewem, jeśli klient wybrał taką formę wypłaty.",
+      "triggers": [
+        "Automatycznie, po zapisaniu rozliczenia zlecenia ([[page:T:Orders.Application.SettleOrderHandler]]). Działa w tle, już po tym, jak specjalista dostał potwierdzenie rozliczenia."
+      ],
+      "triggersNote": null,
+      "mainScenario": "klient wybrał wypłatę przelewem. System zleca wypłatę ([[page:T:Payments.Application.RequestPayoutHandler]]).",
+      "alternativeScenarios": [
+        {
+          "title": "Klient wybrał wypłatę bonem",
+          "ruleRef": "reguła 1",
+          "text": "ten proces nic nie robi. Bony obsługuje moduł bonów (poza zakresem przykładu)."
+        },
+        {
+          "title": "Zlecenie wypłaty zakończyło się błędem",
+          "ruleRef": null,
+          "text": "błąd jest **tylko zapisywany w logach jako ostrzeżenie**. Nikt nie dostaje powiadomienia, proces nie jest ponawiany, a zlecenie skupu pozostaje rozliczone bez wypłaty."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": null,
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Wypłata przelewem tylko wtedy, gdy klient wybrał przelew jako formę wypłaty.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G1"
+          ]
+        }
+      ],
+      "effects": [
+        "Uruchamia [[page:T:Payments.Application.RequestPayoutHandler]] z kwotą równą zaakceptowanej cenie zlecenia.",
+        "Przy błędzie zlecenia wypłaty zapisuje ostrzeżenie w logach."
+      ],
+      "globalRules": [],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.OrderSettledEventHandler` ([[code:src/Payments.Application/OrderSettledEventHandler.cs:7|kod]])"
+          },
+          {
+            "key": "Typ",
+            "value": "`INotificationHandler<OrderSettledEvent>`"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`OrderSettledEvent` (domain event z `Order.Settle`, publikowany po commicie)"
+          },
+          {
+            "key": "Wysyła",
+            "value": "`RequestPayoutCommand` (`ISender.Send`)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`ISender`, `ILogger<OrderSettledEventHandler>`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`notification.PayoutMethod != PayoutMethod.BankTransfer`",
+            "exit": "`return`",
+            "locations": [
+              "src/Payments.Application/OrderSettledEventHandler.cs:13"
+            ]
+          }
+        ],
+        "dismissedNote": null,
+        "resultHandling": [
+          {
+            "call": "`sender.Send(RequestPayoutCommand)`",
+            "whenFailed": "`logger.LogWarning`, brak ponowienia, brak propagacji błędu",
+            "location": "src/Payments.Application/OrderSettledEventHandler.cs:19"
+          }
+        ],
+        "data": [],
+        "dataNote": "brak bezpośrednich odczytów i zapisów. Dane pochodzą z eventu.",
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.RequestPayoutHandler",
+      "module": "Payments",
+      "slug": "RequestPayout",
+      "title": "Zlecenie wypłaty dla klienta",
+      "summary": "Tworzy wypłatę dla klienta za rozliczone zlecenie skupu i przekazuje ją do realizacji przelewem.",
+      "triggers": [
+        "Automatycznie po rozliczeniu zlecenia skupu, jeśli klient wybrał wypłatę przelewem ([[page:T:Payments.Application.OrderSettledEventHandler]]).",
+        "Błąd zwrócony przez ten proces **nie jest pokazywany użytkownikowi ani ponawiany**. Jest tylko zapisywany w logach (szczegóły na stronie [[page:T:Payments.Application.OrderSettledEventHandler]])."
+      ],
+      "triggersNote": null,
+      "mainScenario": "wypłaty są włączone, dla zlecenia nie ma jeszcze wypłaty, klient ma aktywne konto ze zweryfikowaną tożsamością i podanym numerem konta, a kwota mieści się w limicie. System tworzy wypłatę ze statusem *Oczekująca* i przekazuje ją do wysłania przelewem.",
+      "alternativeScenarios": [
+        {
+          "title": "Kwota równa zero lub ujemna",
+          "ruleRef": "reguła 1",
+          "text": "zlecenie wypłaty zostaje odrzucone z błędem."
+        },
+        {
+          "title": "Wypłaty wyłączone",
+          "ruleRef": "reguła 2",
+          "text": "system nic nie robi i **nie zgłasza błędu**. Wypłata nie powstaje."
+        },
+        {
+          "title": "Wypłata dla tego zlecenia już istnieje",
+          "ruleRef": "reguła 3",
+          "text": "system nic nie robi i nie zgłasza błędu. Wyjątek: jeśli poprzednia wypłata zakończyła się niepowodzeniem, powstaje nowa."
+        },
+        {
+          "title": "Konto klienta nie istnieje albo jest zablokowane",
+          "ruleRef": "reguła 4",
+          "text": "błąd, wypłata nie powstaje."
+        },
+        {
+          "title": "Tożsamość klienta niezweryfikowana",
+          "ruleRef": "reguła 5",
+          "text": "błąd, wypłata nie powstaje."
+        },
+        {
+          "title": "Brak numeru konta bankowego",
+          "ruleRef": "reguła 6",
+          "text": "błąd, wypłata nie powstaje."
+        },
+        {
+          "title": "Kwota powyżej limitu",
+          "ruleRef": "reguła 7",
+          "text": "błąd, wypłata nie powstaje."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Kwota wypłaty musi być większa od zera.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G1"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Wypłaty muszą być włączone w konfiguracji systemu.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G2"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Dla zlecenia nie może istnieć wypłata oczekująca ani zrealizowana. Wypłata nieudana nie blokuje nowej.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G3"
+          ]
+        },
+        {
+          "no": 4,
+          "rule": "Klient musi mieć konto, które nie jest zablokowane.",
+          "onFail": "Błąd „konto nieaktywne”.",
+          "guardIds": [
+            "G4"
+          ]
+        },
+        {
+          "no": 5,
+          "rule": "Klient musi mieć zweryfikowaną tożsamość (KYC).",
+          "onFail": "Błąd „brak weryfikacji KYC”.",
+          "guardIds": [
+            "G5"
+          ]
+        },
+        {
+          "no": 6,
+          "rule": "Klient musi mieć podany numer konta bankowego (IBAN).",
+          "onFail": "Błąd „brak numeru konta”.",
+          "guardIds": [
+            "G6"
+          ]
+        },
+        {
+          "no": 7,
+          "rule": "Kwota nie może przekraczać limitu jednej wypłaty (domyślnie 20 000, konfigurowalny).",
+          "onFail": "Błąd „przekroczony limit”.",
+          "guardIds": [
+            "G7"
+          ]
+        }
+      ],
+      "effects": [
+        "Tworzy [[page:T:Payments.Domain.Payout|wypłatę]] ze statusem *Oczekująca*.",
+        "**Numer konta jest kopiowany do wypłaty w chwili jej utworzenia.** Późniejsza zmiana numeru konta klienta nie zmienia już utworzonej wypłaty.",
+        "Uruchamia wysłanie przelewu do operatora płatności (poza zakresem przykładu)."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.RequestPayoutHandler` ([[code:src/Payments.Application/RequestPayout.cs:22|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`RequestPayoutCommand(OrderId, CustomerId, Amount)` → `Result`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`RequestPayoutCommandValidator` ([[code:src/Payments.Application/RequestPayout.cs:12|kod]])"
+          },
+          {
+            "key": "Wywoływany przez",
+            "value": "`OrderSettledEventHandler` (`ISender.Send`)"
+          },
+          {
+            "key": "Publikuje",
+            "value": "`PayoutRequestedEvent` (z `Payout.Create`, po commicie)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`ICustomerAccountRepository`, `IPayoutRepository`, `IFeatureManager`, `IOptions<PayoutOptions>`, `TimeProvider`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`RuleFor(x => x.Amount).GreaterThan(0)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:18"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`!await features.IsEnabledAsync(\"Payouts.Enabled\")`",
+            "exit": "`Result.Ok()` (cichy sukces)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:32"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`payouts.ExistsForOrderAsync(OrderId)`, w repozytorium `p.OrderId == orderId && p.Status != PayoutStatus.Failed`",
+            "exit": "`Result.Ok()` (cichy sukces)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:35",
+              "src/Payments.Infrastructure/PaymentsInfrastructure.cs:35"
+            ]
+          },
+          {
+            "no": 4,
+            "condition": "`account is null`, w repozytorium `a.CustomerId == customerId && !a.IsBlocked`",
+            "exit": "`AccountNotActiveError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:39",
+              "src/Payments.Infrastructure/PaymentsInfrastructure.cs:27"
+            ]
+          },
+          {
+            "no": 5,
+            "condition": "`account.KycStatus != KycStatus.Verified`",
+            "exit": "`KycNotVerifiedError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:42"
+            ]
+          },
+          {
+            "no": 6,
+            "condition": "`string.IsNullOrWhiteSpace(account.Iban)`",
+            "exit": "`MissingIbanError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:45"
+            ]
+          },
+          {
+            "no": 7,
+            "condition": "`amount > maxAmount` w `Payout.Create`",
+            "exit": "`PayoutLimitExceededError`",
+            "locations": [
+              "src/Payments.Domain/Payments.cs:47"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.OrderId).NotEmpty()`, `RuleFor(x => x.CustomerId).NotEmpty()` ([[code:src/Payments.Application/RequestPayout.cs:16|RequestPayout.cs:16–17]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`customer_accounts`",
+            "columns": "`customer_id`, `is_blocked`, `kyc_status`, `iban`"
+          },
+          {
+            "operation": "odczyt",
+            "table": "`payouts`",
+            "columns": "`order_id`, `status`"
+          },
+          {
+            "operation": "zapis (insert)",
+            "table": "`payouts`",
+            "columns": "`id`, `order_id`, `customer_id`, `amount`, `iban`, `status`, `created_at`"
+          }
+        ],
+        "dataNote": null,
+        "config": [
+          {
+            "key": "`Payouts.Enabled`",
+            "meaning": "feature flag włączający wypłaty",
+            "default": "brak (zależy od konfiguracji środowiska)"
+          },
+          {
+            "key": "`Payouts:MaxAmount`",
+            "meaning": "limit jednej wypłaty (`PayoutOptions.MaxAmount`)",
+            "default": "`20000`"
+          }
+        ],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+      "module": "Payments",
+      "slug": "ConfirmPayout",
+      "title": "Potwierdzenie wypłaty przez operatora płatności",
+      "summary": "Zapisuje wynik przelewu zgłoszony przez operatora płatności: wypłata zrealizowana albo nieudana.",
+      "triggers": [
+        "Automatycznie, gdy operator płatności wyśle powiadomienie o wykonaniu lub odrzuceniu przelewu.",
+        "Za udany przelew system uznaje **tylko** powiadomienie ze statusem `executed`. Każdy inny status operatora jest traktowany jako niepowodzenie."
+      ],
+      "triggersNote": null,
+      "mainScenario": "**Scenariusz główny (sukces):** wypłata istnieje i czeka na realizację, a operator potwierdza wykonanie przelewu z numerem referencyjnym. System oznacza wypłatę jako *Zrealizowana* i zapisuje numer referencyjny.\n\n**Scenariusz główny (odrzucenie):** wypłata istnieje i czeka na realizację, a operator zgłasza odrzucenie z podanym powodem. System oznacza wypłatę jako *Nieudana* i zapisuje powód.",
+      "alternativeScenarios": [
+        {
+          "title": "Brak numeru referencyjnego przy sukcesie albo brak powodu przy odrzuceniu",
+          "ruleRef": "reguły 1–2",
+          "text": "powiadomienie odrzucone, stan wypłaty bez zmian."
+        },
+        {
+          "title": "Wypłata nie istnieje",
+          "ruleRef": "reguła 3",
+          "text": "powiadomienie odrzucone."
+        },
+        {
+          "title": "Wypłata jest już zrealizowana albo nieudana",
+          "ruleRef": "reguła 4",
+          "text": ", np. operator wysłał powiadomienie drugi raz: powiadomienie odrzucone, stan wypłaty bez zmian."
+        }
+      ],
+      "scenariosNote": "**Po nieudanej wypłacie** w analizowanym kodzie nic nie tworzy automatycznie nowej wypłaty. Nowa wypłata dla tego samego zlecenia jest dozwolona ([[page:T:Payments.Application.RequestPayoutHandler]], reguła 3), ale musi zostać zlecona w inny sposób.",
+      "rulesIntro": null,
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Potwierdzenie sukcesu musi zawierać numer referencyjny przelewu.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G1"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Zgłoszenie odrzucenia musi zawierać powód.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G2"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Wypłata musi istnieć.",
+          "onFail": "Błąd „nie znaleziono wypłaty”.",
+          "guardIds": [
+            "G3"
+          ]
+        },
+        {
+          "no": 4,
+          "rule": "Wypłata musi mieć status *Oczekująca*.",
+          "onFail": "Błąd „wypłata już zakończona”.",
+          "guardIds": [
+            "G4",
+            "G5"
+          ]
+        }
+      ],
+      "effects": [
+        "Sukces: [[page:T:Payments.Domain.Payout|wypłata]] przechodzi w status *Zrealizowana*, zapisany zostaje numer referencyjny.",
+        "Odrzucenie: wypłata przechodzi w status *Nieudana*, zapisany zostaje powód."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.ConfirmPayoutHandler` ([[code:src/Payments.Application/ConfirmPayout.cs:20|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`ConfirmPayoutCommand(PayoutId, Succeeded, PspReference, FailureReason)` → `Result`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`ConfirmPayoutCommandValidator` ([[code:src/Payments.Application/ConfirmPayout.cs:10|kod]])"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`POST /webhooks/psp/payouts` ([[code:src/Payments.Api/PspWebhookEndpoints.cs:14|kod]]); `Succeeded = body.Status == \"executed\"` ([[code:src/Payments.Api/PspWebhookEndpoints.cs:18|kod]]); błąd → HTTP 422"
+          },
+          {
+            "key": "Zależności",
+            "value": "`IPayoutRepository`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:15"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:16"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`payout is null`",
+            "exit": "`PayoutNotFoundError`",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:26"
+            ]
+          },
+          {
+            "no": 4,
+            "condition": "`Status != PayoutStatus.Pending` w `MarkCompleted` / `MarkFailed`",
+            "exit": "`PayoutAlreadyFinalizedError`",
+            "locations": [
+              "src/Payments.Domain/Payments.cs:66",
+              "src/Payments.Domain/Payments.cs:76"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.PayoutId).NotEmpty()` ([[code:src/Payments.Application/ConfirmPayout.cs:14|ConfirmPayout.cs:14]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`payouts`",
+            "columns": "`id`, `status`"
+          },
+          {
+            "operation": "zapis (update)",
+            "table": "`payouts`",
+            "columns": "`status` → `Completed` + `psp_reference` albo `status` → `Failed` + `failure_reason`"
+          }
+        ],
+        "dataNote": null,
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    }
+  ],
+  "entities": [
+    {
+      "pageId": "T:Payments.Domain.Payout",
+      "module": "Payments",
+      "slug": "Payout",
+      "name": "Wypłata",
+      "description": "Pojedynczy przelew pieniędzy do klienta za rozliczone zlecenie skupu. Dla jednego zlecenia może istnieć kilka wypłat, ale tylko jedna, która nie jest nieudana.",
+      "statuses": [
+        {
+          "value": "Pending",
+          "label": "Oczekująca",
+          "meaning": "Wypłata utworzona, czeka na wykonanie przelewu przez operatora płatności.",
+          "isFinal": false
+        },
+        {
+          "value": "Completed",
+          "label": "Zrealizowana",
+          "meaning": "Operator potwierdził wykonanie przelewu.",
+          "isFinal": true
+        },
+        {
+          "value": "Failed",
+          "label": "Nieudana",
+          "meaning": "Operator odrzucił przelew. Dla zlecenia można utworzyć nową wypłatę.",
+          "isFinal": true
+        }
+      ],
+      "stateDiagram": [
+        {
+          "from": "[*]",
+          "to": "Oczekująca",
+          "label": "Zlecenie wypłaty dla klienta"
+        },
+        {
+          "from": "Oczekująca",
+          "to": "Zrealizowana",
+          "label": "Potwierdzenie operatora (sukces)"
+        },
+        {
+          "from": "Oczekująca",
+          "to": "Nieudana",
+          "label": "Potwierdzenie operatora (odrzucenie)"
+        },
+        {
+          "from": "Zrealizowana",
+          "to": "[*]",
+          "label": null
+        },
+        {
+          "from": "Nieudana",
+          "to": "[*]",
+          "label": null
+        }
+      ],
+      "rules": [
+        "Status można zmienić tylko z *Oczekująca*. Wypłata zrealizowana albo nieudana już się nie zmienia.",
+        "Kwota nie może przekroczyć limitu jednej wypłaty (domyślnie 20 000).",
+        "Numer konta jest kopią numeru z konta klienta w chwili utworzenia wypłaty."
+      ],
+      "changes": [
+        {
+          "change": "utworzenie (*Oczekująca*)",
+          "pageId": "T:Payments.Application.RequestPayoutHandler"
+        },
+        {
+          "change": "*Oczekująca* → *Zrealizowana*",
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler"
+        },
+        {
+          "change": "*Oczekująca* → *Nieudana*",
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler"
+        }
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Klasa",
+            "value": "`Payments.Domain.Payout` ([[code:src/Payments.Domain/Payments.cs:28|kod]])"
+          },
+          {
+            "key": "Tabela",
+            "value": "`payouts`"
+          },
+          {
+            "key": "Eventy",
+            "value": "`PayoutRequestedEvent` przy utworzeniu"
+          }
+        ],
+        "fields": [
+          {
+            "field": "`Id`",
+            "column": "`id`",
+            "type": "`Guid`",
+            "description": "Identyfikator wypłaty."
+          },
+          {
+            "field": "`OrderId`",
+            "column": "`order_id`",
+            "type": "`Guid`",
+            "description": "Zlecenie skupu, za które jest wypłata."
+          },
+          {
+            "field": "`CustomerId`",
+            "column": "`customer_id`",
+            "type": "`Guid`",
+            "description": "Klient otrzymujący wypłatę."
+          },
+          {
+            "field": "`Amount`",
+            "column": "`amount`",
+            "type": "`decimal`",
+            "description": "Kwota wypłaty."
+          },
+          {
+            "field": "`Iban`",
+            "column": "`iban`",
+            "type": "`string`",
+            "description": "Numer konta skopiowany w chwili utworzenia."
+          },
+          {
+            "field": "`Status`",
+            "column": "`status`",
+            "type": "`PayoutStatus`",
+            "description": "`Pending`, `Completed`, `Failed`."
+          },
+          {
+            "field": "`PspReference`",
+            "column": "`psp_reference`",
+            "type": "`string?`",
+            "description": "Numer referencyjny przelewu od operatora, ustawiany przy sukcesie."
+          },
+          {
+            "field": "`FailureReason`",
+            "column": "`failure_reason`",
+            "type": "`string?`",
+            "description": "Powód odrzucenia od operatora, ustawiany przy niepowodzeniu."
+          },
+          {
+            "field": "`CreatedAt`",
+            "column": "`created_at`",
+            "type": "`DateTime`",
+            "description": "Data utworzenia (UTC)."
+          }
+        ],
+        "transitions": [
+          {
+            "to": "`Pending`",
+            "method": "`Payout.Create`",
+            "condition": "`amount <= maxAmount`",
+            "location": "src/Payments.Domain/Payments.cs:57"
+          },
+          {
+            "to": "`Completed`",
+            "method": "`MarkCompleted`",
+            "condition": "`Status == Pending`",
+            "location": "src/Payments.Domain/Payments.cs:69"
+          },
+          {
+            "to": "`Failed`",
+            "method": "`MarkFailed`",
+            "condition": "`Status == Pending`",
+            "location": "src/Payments.Domain/Payments.cs:79"
+          }
+        ]
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    }
+  ],
+  "flows": [
+    {
+      "pageId": "flow:Orders.Api.OrderEndpoints.settle",
+      "slug": "Wyplata-po-rozliczeniu",
+      "title": "Wypłata po rozliczeniu zlecenia skupu",
+      "description": "Klient sprzedaje urządzenie, specjalista je wycenia, a klient akceptuje cenę. Po rozliczeniu zlecenia klient dostaje pieniądze przelewem albo bonem. Ta strona opisuje ścieżkę przelewu.",
+      "nodes": [
+        {
+          "id": "A",
+          "label": "Specjalista rozlicza zlecenie",
+          "shape": "step"
+        },
+        {
+          "id": "B",
+          "label": "Rozliczenie zlecenia skupu",
+          "shape": "step"
+        },
+        {
+          "id": "C",
+          "label": "Klient wybrał przelew?",
+          "shape": "decision"
+        },
+        {
+          "id": "D",
+          "label": "Moduł bonów (poza przykładem)",
+          "shape": "step"
+        },
+        {
+          "id": "E",
+          "label": "Zlecenie wypłaty dla klienta",
+          "shape": "step"
+        },
+        {
+          "id": "F",
+          "label": "Wysłanie przelewu do operatora (poza przykładem)",
+          "shape": "step"
+        },
+        {
+          "id": "G",
+          "label": "Potwierdzenie wypłaty przez operatora płatności",
+          "shape": "step"
+        },
+        {
+          "id": "H",
+          "label": "Wypłata zrealizowana albo nieudana",
+          "shape": "end"
+        }
+      ],
+      "edges": [
+        {
+          "from": "A",
+          "to": "B",
+          "label": null,
+          "dashed": false
+        },
+        {
+          "from": "B",
+          "to": "C",
+          "label": "po zapisie, w tle",
+          "dashed": false
+        },
+        {
+          "from": "C",
+          "to": "D",
+          "label": "nie",
+          "dashed": false
+        },
+        {
+          "from": "C",
+          "to": "E",
+          "label": "tak",
+          "dashed": false
+        },
+        {
+          "from": "E",
+          "to": "F",
+          "label": "po zapisie, w tle",
+          "dashed": false
+        },
+        {
+          "from": "F",
+          "to": "G",
+          "label": "powiadomienie operatora",
+          "dashed": true
+        },
+        {
+          "from": "G",
+          "to": "H",
+          "label": null,
+          "dashed": false
+        }
+      ],
+      "steps": [
+        {
+          "no": 1,
+          "pageId": "T:Orders.Application.SettleOrderHandler",
+          "label": "Rozliczenie zlecenia skupu",
+          "module": "Orders",
+          "mode": "na żądanie specjalisty"
+        },
+        {
+          "no": 2,
+          "pageId": "T:Payments.Application.OrderSettledEventHandler",
+          "label": "Start wypłaty po rozliczeniu zlecenia",
+          "module": "Payments",
+          "mode": "w tle, po zapisie kroku 1"
+        },
+        {
+          "no": 3,
+          "pageId": "T:Payments.Application.RequestPayoutHandler",
+          "label": "Zlecenie wypłaty dla klienta",
+          "module": "Payments",
+          "mode": "w tle, wywołane przez krok 2"
+        },
+        {
+          "no": 4,
+          "pageId": null,
+          "label": "Wysłanie przelewu do operatora płatności",
+          "module": "Payments",
+          "mode": "poza zakresem przykładu"
+        },
+        {
+          "no": 5,
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+          "label": "Potwierdzenie wypłaty przez operatora płatności",
+          "module": "Payments",
+          "mode": "na powiadomienie operatora"
+        }
+      ],
+      "silentStopsIntro": "Specjalista widzi sukces już po kroku 1. W tych miejscach klient nie dostanie przelewu, a nikt nie dostanie komunikatu o błędzie:",
+      "silentStops": [
+        {
+          "place": "krok 2",
+          "reason": "Klient wybrał bon. To zamierzone, bon obsługuje inny moduł.",
+          "trace": "forma wypłaty w zleceniu"
+        },
+        {
+          "place": "krok 3, reguła 2",
+          "reason": "Wypłaty są wyłączone w konfiguracji.",
+          "trace": "brak wypłaty, brak wpisu w logach"
+        },
+        {
+          "place": "krok 3, reguła 3",
+          "reason": "Dla zlecenia istnieje już wypłata oczekująca albo zrealizowana.",
+          "trace": "istniejąca wypłata"
+        },
+        {
+          "place": "krok 3, reguły 1 i 4–7",
+          "reason": "Błąd zlecenia wypłaty (konto zablokowane, brak KYC, brak IBAN, limit). Krok 2 tylko zapisuje ostrzeżenie w logach i nie ponawia.",
+          "trace": "ostrzeżenie w logach"
+        },
+        {
+          "place": "krok 5",
+          "reason": "Operator odrzucił przelew. Nic automatycznie nie tworzy nowej wypłaty.",
+          "trace": "wypłata ze statusem *Nieudana*"
+        }
+      ],
+      "technical": [
+        {
+          "step": 1,
+          "input": "`POST /orders/{orderId}/settle` → `SettleOrderCommand`",
+          "connection": "`Order.Settle` → `OrderSettledEvent` (domain event, po commicie)"
+        },
+        {
+          "step": 2,
+          "input": "`OrderSettledEventHandler`",
+          "connection": "`ISender.Send(RequestPayoutCommand)`, wynik tylko logowany"
+        },
+        {
+          "step": 3,
+          "input": "`RequestPayoutHandler`",
+          "connection": "`Payout.Create` → `PayoutRequestedEvent` (domain event, po commicie)"
+        },
+        {
+          "step": 4,
+          "input": "handler `PayoutRequestedEvent` (poza przykładem)",
+          "connection": "wywołanie zewnętrzne do operatora płatności"
+        },
+        {
+          "step": 5,
+          "input": "`POST /webhooks/psp/payouts` → `ConfirmPayoutCommand`",
+          "connection": "koniec procesu"
+        }
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    }
+  ],
+  "globalRules": [
+    {
+      "pageId": "T:BuildingBlocks.ValidationBehavior`2",
+      "slug": "ValidationBehavior",
+      "title": "Walidacja komend",
+      "summary": "Sprawdza poprawność danych każdej komendy, zanim zostanie wykonana jej logika.",
+      "behaviour": [
+        "Dotyczy każdej komendy, która ma zdefiniowane reguły walidacji.",
+        "Sprawdzane są **wszystkie** reguły naraz, a nie tylko pierwsza niespełniona. Błąd zawiera listę wszystkich problemów z nazwami pól.",
+        "Jeśli którakolwiek reguła nie jest spełniona, **logika komendy w ogóle się nie wykonuje** i nic nie jest zapisywane.",
+        "Błąd walidacji jest zwracany jako wynik, a nie wyjątek. To wywołujący decyduje, co z nim zrobić (np. endpoint zwraca HTTP 422, a [[page:T:Payments.Application.OrderSettledEventHandler]] tylko zapisuje ostrzeżenie w logach)."
+      ],
+      "appliesTo": [
+        {
+          "pageId": "T:Orders.Application.SettleOrderHandler",
+          "rules": "tylko techniczne"
+        },
+        {
+          "pageId": "T:Payments.Application.RequestPayoutHandler",
+          "rules": "reguła 1"
+        },
+        {
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+          "rules": "reguły 1–2"
+        }
+      ],
+      "technicalSummary": [
+        {
+          "key": "Klasa",
+          "value": "`BuildingBlocks.ValidationBehavior<TRequest, TResponse>` ([[code:src/BuildingBlocks/BuildingBlocks.cs:25|kod]])"
+        },
+        {
+          "key": "Typ",
+          "value": "`IPipelineBehavior<TRequest, TResponse>`, `TResponse : ResultBase, new()`"
+        },
+        {
+          "key": "Źródło reguł",
+          "value": "wszystkie `IValidator<TRequest>` (FluentValidation) z kontenera DI"
+        }
+      ],
+      "logic": [
+        {
+          "condition": "`!validators.Any()`",
+          "exit": "`next()`, bez walidacji",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:32"
+        },
+        {
+          "condition": "`failures.Count == 0`",
+          "exit": "`next()`",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:38"
+        },
+        {
+          "condition": "w przeciwnym razie",
+          "exit": "nowy `TResponse` z `Error(ErrorMessage)` i metadaną `Property` dla każdego błędu",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:41"
+        }
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    }
+  ],
+  "modules": [
+    {
+      "pageId": "module:Orders",
+      "module": "Orders",
+      "title": "Zlecenia skupu",
+      "summary": "Przyjmowanie, wycena i rozliczanie zleceń skupu urządzeń.",
+      "useCases": [
+        "T:Orders.Application.SettleOrderHandler"
+      ],
+      "entities": [],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "dependsOn": [],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "module:Payments",
+      "module": "Payments",
+      "title": "Wypłaty",
+      "summary": "Wypłaty pieniędzy dla klientów za rozliczone zlecenia skupu.",
+      "useCases": [
+        "T:Payments.Application.OrderSettledEventHandler",
+        "T:Payments.Application.RequestPayoutHandler",
+        "T:Payments.Application.ConfirmPayoutHandler"
+      ],
+      "entities": [
+        "T:Payments.Domain.Payout"
+      ],
+      "flows": [
+        "flow:Orders.Api.OrderEndpoints.settle"
+      ],
+      "dependsOn": [
+        "module:Orders"
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "fixture",
+        "status": "ok",
+        "promptVersion": "v1",
+        "model": "fixture",
+        "warnings": []
+      }
+    }
+  ],
+  "system": {
+    "pageId": "system",
+    "title": "System skupu urządzeń",
+    "summary": "Skup używanych urządzeń od klientów: wycena, rozliczenie zlecenia i wypłata pieniędzy.",
+    "modules": [
+      {
+        "pageId": "module:Orders",
+        "summary": "Zlecenia skupu i ich rozliczanie."
+      },
+      {
+        "pageId": "module:Payments",
+        "summary": "Wypłaty dla klientów."
+      }
+    ],
+    "meta": {
+      "sourceCommit": "a1b2c3d",
+      "cardHash": "fixture",
+      "status": "ok",
+      "promptVersion": "v1",
+      "model": "fixture",
+      "warnings": []
+    }
+  },
+  "glossary": {
+    "pageId": "glossary",
+    "entries": [
+      {
+        "term": "Zlecenie skupu",
+        "codeName": "Order",
+        "description": "Zlecenie odkupienia urządzenia od klienta.",
+        "manual": false
+      },
+      {
+        "term": "Wypłata",
+        "codeName": "Payout",
+        "description": "Przelew pieniędzy do klienta ([[page:T:Payments.Domain.Payout]]).",
+        "manual": false
+      }
+    ],
+    "meta": {
+      "sourceCommit": "a1b2c3d",
+      "cardHash": "fixture",
+      "status": "ok",
+      "promptVersion": "v1",
+      "model": "fixture",
+      "warnings": []
+    }
+  }
+}
