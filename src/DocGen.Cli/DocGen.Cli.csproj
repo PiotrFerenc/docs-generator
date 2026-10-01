@@ -14,5 +14,6 @@
     <ProjectReference Include="../DocGen.Render/DocGen.Render.csproj" />
     <ProjectReference Include="../DocGen.Confluence/DocGen.Confluence.csproj" />
     <ProjectReference Include="../DocGen.Search/DocGen.Search.csproj" />
+    <ProjectReference Include="../DocGen.Agent/DocGen.Agent.csproj" />
   </ItemGroup>
 </Project>

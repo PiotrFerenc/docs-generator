@@ -39,6 +39,9 @@ public interface IDocsSearchIndexer
 public interface IDocsSearch
 {
     Task<SearchAnswer> AskAsync(string question, CancellationToken ct);
+
+    /// <summary>Retrieval + rerank only (no LLM answer).</summary>
+    Task<List<SearchHit>> SearchAsync(string query, CancellationToken ct);
 }
 
 // ── Manifest (.manifest.json in the output dir) ─────────────────────────────

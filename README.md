@@ -28,6 +28,8 @@ docgen [--config appsettings.json] [--out <katalog>] <command>
   publish [--dry-run]        <OutputDir> -> Confluence
   search-index               <OutputDir> -> Qdrant
   ask "<pytanie>"            retriever + reranker + odpowiedź LLM
+  agent "<pytanie>" [--snapshot <plik.json>] [--report <plik.md>]
+                             agent odpowiadający na pytania o system (dokumentacja + kod + opcjonalnie dane)
   run [--publish] [--dry-run] [--search]
                              index + cards + render (+ publish) (+ search-index)
 ```
@@ -89,6 +91,42 @@ a `ask` zamiast odpowiedzi LLM wypisuje najlepsze fragmenty z numerami `[n]`. Ca
 - `ask`: embedding pytania → zapytanie hybrydowe (dense + sparse, fuzja RRF, 20 kandydatów) → reranker → top 5
   → LLM odpowiada wyłącznie na podstawie fragmentów, cytując je jako `[n]`.
 - Zmiana `Embeddings:Dimensions` wymaga nowej kolekcji (zmień `Qdrant:Collection` albo usuń starą).
+
+## Agent
+
+Odpowiada na dowolne pytania o system na podstawie wygenerowanej wiedzy: jak działa proces, jakie reguły obowiązują,
+co się stanie w danej sytuacji, gdzie w kodzie jest dana logika, co zapisuje / od czego zależy pole, a z dołączonym
+snapshotem danych — dlaczego konkretny przypadek ma taki stan albo dlaczego coś się nie wydarzyło.
+
+```bash
+dotnet run --project src/DocGen.Cli -- agent "Jakie warunki musi spełnić klient, żeby dostać wypłatę?"
+dotnet run --project src/DocGen.Cli -- agent "Co zmienia status wypłaty?" --report odpowiedz.md
+dotnet run --project src/DocGen.Cli -- agent "Dlaczego ten przypadek się zatrzymał?" --snapshot examples/snapshots/brak-iban.json
+```
+
+Działanie:
+
+1. Wyszukanie fragmentów dokumentacji dla pytania — Qdrant + reranker (`search-index` musi być wykonany), a gdy nie są
+   dostępne: wyszukiwanie po słowach w kartach.
+2. Z snapshotem: automatyczna analiza danych — który krok opisanego procesu nie ma śladu w danych i jak wypadają reguły
+   (❌ niespełniona, ✅ spełniona, ❓ nie do sprawdzenia).
+3. Pętla LLM z narzędziami (sekcja `Agent`, maks. `MaxSteps` kroków): `search_docs`, `list_pages`, `get_page`,
+   `get_rules`, `find_usages`, `get_code`, a ze snapshotem także `get_rows`, `check_flow`, `evaluate_rules`.
+   Odpowiedź: sekcja „Odpowiedź” (język biznesu) + „Uzasadnienie” (źródła: strona, `ścieżka:linia`, wartość z danych).
+   Bez `BaseAddress` raport zawiera tylko źródła i analizę danych.
+
+Snapshot (opcjonalny) — rekordy przypadku z bazy:
+
+```json
+{
+  "tables": { "orders": [ { "status": "Settled" } ], "payouts": [] },
+  "config": { "Payouts.Enabled": true }
+}
+```
+
+Pusta tablica = „brak rekordów” (fakt), brak tabeli = „nie pobrano”. Tabele/kolumny dopasowywane są przez mapowanie EF
+z indeksu (albo snake_case nazw). Przykłady: `examples/snapshots/`. Snapshot trafia do LLM — przy zewnętrznym modelu
+nie wysyłaj danych osobowych bez maskowania.
 
 ## Przykład
 

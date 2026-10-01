@@ -1,0 +1,22 @@
+{
+  "tables": {
+    "orders": [
+      {
+        "id": "7d1c…-456",
+        "customer_id": "c-123",
+        "status": "Settled",
+        "payout_method": "BankTransfer",
+        "accepted_price": 1500.0
+      }
+    ],
+    "customer_accounts": [
+      {
+        "customer_id": "c-123",
+        "iban": "PL61109010140000071219812874",
+        "kyc_status": "Verified",
+        "is_blocked": false
+      }
+    ],
+    "payouts": []
+  }
+}

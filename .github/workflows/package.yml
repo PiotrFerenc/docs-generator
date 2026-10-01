@@ -1,0 +1,18 @@
+name: package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Source only, no build. Publishing the zip comes later.
+      - run: git archive --format=zip --prefix=docgen/ -o docgen-${{ github.sha }}.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docgen-source
+          path: docgen-${{ github.sha }}.zip

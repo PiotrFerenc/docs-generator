@@ -75,6 +75,12 @@ public sealed class DocsSearch(Qdrant qdrant, Embedder embedder, Reranker rerank
 
     public async Task<SearchAnswer> AskAsync(string question, CancellationToken ct)
     {
+        var top = await SearchAsync(question, ct);
+        return new SearchAnswer(await answerer.AnswerAsync(question, top, ct), top);
+    }
+
+    public async Task<List<SearchHit>> SearchAsync(string question, CancellationToken ct)
+    {
         var dense = (await embedder.EmbedAsync([question], ct))[0];
         var candidates = (await qdrant.QueryAsync(dense, Chunker.Sparse(question), RetrieveLimit, ct))
             .Select(p => new SearchHit(DocsSearchIndexer.Str(p.Payload, "pageId"), DocsSearchIndexer.Str(p.Payload, "title"),
@@ -83,9 +89,7 @@ public sealed class DocsSearch(Qdrant qdrant, Embedder embedder, Reranker rerank
 
         var ranked = await reranker.RerankAsync(question,
             candidates.Select(h => DocsSearchIndexer.EmbeddingText(h.Title, new Chunk(h.Section, h.Text))).ToList(), TopN, ct);
-        var top = ranked.Select(r => candidates[r.Index] with { Score = r.Score ?? candidates[r.Index].Score }).ToList();
-
-        return new SearchAnswer(await answerer.AnswerAsync(question, top, ct), top);
+        return ranked.Select(r => candidates[r.Index] with { Score = r.Score ?? candidates[r.Index].Score }).ToList();
     }
 
 }

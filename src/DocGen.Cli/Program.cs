@@ -24,6 +24,9 @@ namespace DocGen.Cli
               publish [--dry-run]        Sync <OutputDir> to Confluence
               search-index               Index <OutputDir> into Qdrant
               ask "<question>"           Search docs (retriever + reranker + LLM answer)
+              agent "<question>" [--snapshot <file.json>] [--report <file.md>]
+                                         Agent answering questions about the system from the documentation,
+                                         code index and (optionally) a snapshot of case data
               run [--publish] [--dry-run] [--search]
                                          index + cards + render (+ publish) (+ search-index)
 
@@ -85,6 +88,7 @@ namespace DocGen.Cli
                     "publish" => await Publish(Build(services, config, confluence: true), rest.Contains("--dry-run"), cts.Token),
                     "search-index" => await SearchIndex(Build(services, config, search: true), cts.Token),
                     "ask" => await Ask(Build(services, config, search: true), string.Join(' ', rest), cts.Token),
+                    "agent" => await Agent(Build(services, config, search: true, agent: true), rest, cts.Token),
                     "run" => await RunAll(services, config, rest, cts.Token),
                     _ => Unknown(command)
                 };
@@ -98,7 +102,7 @@ namespace DocGen.Cli
         }
 
         static ServiceProvider Build(IServiceCollection services, IConfiguration config,
-            bool indexer = false, bool cards = false, bool render = false, bool confluence = false, bool search = false)
+            bool indexer = false, bool cards = false, bool render = false, bool confluence = false, bool search = false, bool agent = false)
         {
             // Stages are registered only when needed, so e.g. `render` works without Roslyn or LLM configuration.
             if (indexer) DocGen.Indexer.ServiceCollectionExtensions.AddDocGenIndexer(services, config);
@@ -106,6 +110,7 @@ namespace DocGen.Cli
             if (render) DocGen.Render.ServiceCollectionExtensions.AddDocGenRender(services, config);
             if (confluence) DocGen.Confluence.ServiceCollectionExtensions.AddDocGenConfluence(services, config);
             if (search) DocGen.Search.ServiceCollectionExtensions.AddDocGenSearch(services, config);
+            if (agent) DocGen.Agent.ServiceCollectionExtensions.AddDocGenAgent(services, config);
             return services.BuildServiceProvider();
         }
 
@@ -186,6 +191,28 @@ namespace DocGen.Cli
             Console.WriteLine();
             foreach (var hit in answer.Sources)
                 Console.WriteLine($"  [{hit.Score:0.000}] {hit.Title} › {hit.Section} ({hit.PageId})");
+            return 0;
+        }
+
+        static async Task<int> Agent(ServiceProvider sp, List<string> rest, CancellationToken ct)
+        {
+            var snapshotPath = TakeOption(rest, "--snapshot");
+            var reportPath = TakeOption(rest, "--report");
+            var question = string.Join(' ', rest);
+            if (string.IsNullOrWhiteSpace(question))
+                return Unknown("agent (question missing)");
+
+            var agent = sp.GetRequiredService<DocGen.Agent.IDocAgent>();
+            var snapshot = snapshotPath is null ? null : DocGen.Agent.Snapshot.Load(Path.GetFullPath(snapshotPath));
+            var result = await agent.AskAsync(question, snapshot, ct);
+            var report = agent.ToMarkdown(result);
+            if (reportPath is null)
+                Console.WriteLine(report);
+            else
+            {
+                File.WriteAllText(Path.GetFullPath(reportPath), report);
+                Console.WriteLine($"agent: report -> {Path.GetFullPath(reportPath)}");
+            }
             return 0;
         }
 

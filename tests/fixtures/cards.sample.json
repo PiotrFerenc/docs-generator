@@ -1,0 +1,1422 @@
+{
+  "commit": "a1b2c3d",
+  "useCases": [
+    {
+      "pageId": "T:Orders.Application.SettleOrderHandler",
+      "module": "Orders",
+      "slug": "SettleOrder",
+      "title": "Settle order",
+      "summary": "Obsługuje komendę `SettleOrderCommand`.",
+      "triggers": [
+        "Wywołanie `POST /orders/{orderId:guid}/settle`."
+      ],
+      "triggersNote": null,
+      "mainScenario": "wszystkie reguły są spełnione. Zmienia [[page:T:Orders.Domain.Order|Order]]: `Status` → `Settled`, `SettledAt`. Publikuje zdarzenie `OrderSettledEvent`.",
+      "alternativeScenarios": [
+        {
+          "title": "Zachodzi `order is null`",
+          "ruleRef": "reguła 1",
+          "text": "błąd `OrderNotFoundError`."
+        },
+        {
+          "title": "Zachodzi `Status != OrderStatus.Valued`",
+          "ruleRef": "reguła 2",
+          "text": "błąd `OrderNotValuedError`."
+        },
+        {
+          "title": "Zachodzi `AcceptedPrice is null or <= 0m`",
+          "ruleRef": "reguła 3",
+          "text": "błąd `MissingAcceptedPriceError`."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Nie może zachodzić: `order is null`.",
+          "onFail": "Błąd `OrderNotFoundError`.",
+          "guardIds": [
+            "G2"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Nie może zachodzić: `Status != OrderStatus.Valued`.",
+          "onFail": "Błąd `OrderNotValuedError`.",
+          "guardIds": [
+            "G3"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Nie może zachodzić: `AcceptedPrice is null or <= 0m`.",
+          "onFail": "Błąd `MissingAcceptedPriceError`.",
+          "guardIds": [
+            "G4"
+          ]
+        }
+      ],
+      "effects": [
+        "Zmienia [[page:T:Orders.Domain.Order|Order]]: `Status` → `Settled`, `SettledAt`.",
+        "Publikuje zdarzenie `OrderSettledEvent`."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Orders.Application.SettleOrderHandler` ([[code:src/Orders.Application/SettleOrder.cs:18|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`SettleOrderCommand`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`SettleOrderCommandValidator` ([[code:src/Orders.Application/SettleOrder.cs:10|kod]])"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`POST /orders/{orderId:guid}/settle` ([[code:src/Orders.Api/OrderEndpoints.cs:11|kod]]); wynik zwracany jako odpowiedź HTTP"
+          },
+          {
+            "key": "Publikuje",
+            "value": "`OrderSettledEvent` (z `Order.Settle`, po commicie)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`IOrderRepository`, `TimeProvider`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`order is null`",
+            "exit": "`OrderNotFoundError`",
+            "locations": [
+              "src/Orders.Application/SettleOrder.cs:24"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`Status != OrderStatus.Valued` w `Order.Settle`",
+            "exit": "`OrderNotValuedError`",
+            "locations": [
+              "src/Orders.Domain/Order.cs:31"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`AcceptedPrice is null or <= 0m` w `Order.Settle`",
+            "exit": "`MissingAcceptedPriceError`",
+            "locations": [
+              "src/Orders.Domain/Order.cs:34"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.OrderId).NotEmpty()` ([[code:src/Orders.Application/SettleOrder.cs:14|SettleOrder.cs:14]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`Order`",
+            "columns": "`Status`, `Id`, `AcceptedPrice`, `CustomerId`, `PayoutMethod`"
+          },
+          {
+            "operation": "zapis (update)",
+            "table": "`Order`",
+            "columns": "`Status` → `Settled`, `SettledAt`"
+          }
+        ],
+        "dataNote": null,
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "3a14eafd9b6bdbc4b9c7af2a1fb6709ebb0b2c5a991a7f8a5e9f15a871590c6c",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+      "module": "Payments",
+      "slug": "ConfirmPayout",
+      "title": "Confirm payout",
+      "summary": "Obsługuje komendę `ConfirmPayoutCommand`.",
+      "triggers": [
+        "Wywołanie `POST /webhooks/psp/payouts`."
+      ],
+      "triggersNote": null,
+      "mainScenario": "wszystkie reguły są spełnione. Zmienia [[page:T:Payments.Domain.Payout|Payout]]: `Status` → `Completed` / `Failed`, `PspReference`, `FailureReason`.",
+      "alternativeScenarios": [
+        {
+          "title": "Niespełniona walidacja `RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)`",
+          "ruleRef": "reguła 1",
+          "text": "błąd walidacji."
+        },
+        {
+          "title": "Niespełniona walidacja `RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)`",
+          "ruleRef": "reguła 2",
+          "text": "błąd walidacji."
+        },
+        {
+          "title": "Zachodzi `payout is null`",
+          "ruleRef": "reguła 3",
+          "text": "błąd `PayoutNotFoundError`."
+        },
+        {
+          "title": "Zachodzi `Status != PayoutStatus.Pending`",
+          "ruleRef": "reguła 4",
+          "text": "błąd `PayoutAlreadyFinalizedError`."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Walidacja: `RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)`.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G2"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Walidacja: `RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)`.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G3"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Nie może zachodzić: `payout is null`.",
+          "onFail": "Błąd `PayoutNotFoundError`.",
+          "guardIds": [
+            "G5",
+            "G4"
+          ]
+        },
+        {
+          "no": 4,
+          "rule": "Nie może zachodzić: `Status != PayoutStatus.Pending`.",
+          "onFail": "Błąd `PayoutAlreadyFinalizedError`.",
+          "guardIds": [
+            "G6",
+            "G7"
+          ]
+        }
+      ],
+      "effects": [
+        "Zmienia [[page:T:Payments.Domain.Payout|Payout]]: `Status` → `Completed` / `Failed`, `PspReference`, `FailureReason`."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.ConfirmPayoutHandler` ([[code:src/Payments.Application/ConfirmPayout.cs:20|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`ConfirmPayoutCommand`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`ConfirmPayoutCommandValidator` ([[code:src/Payments.Application/ConfirmPayout.cs:10|kod]])"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`POST /webhooks/psp/payouts` ([[code:src/Payments.Api/PspWebhookEndpoints.cs:14|kod]]); `ConfirmPayoutCommand.Succeeded = body.Status == \"executed\"`; wynik zwracany jako odpowiedź HTTP"
+          },
+          {
+            "key": "Zależności",
+            "value": "`IPayoutRepository`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`RuleFor(x => x.PspReference).NotEmpty().When(x => x.Succeeded)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:15"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`RuleFor(x => x.FailureReason).NotEmpty().When(x => !x.Succeeded)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:16"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`payout is null`, `FirstOrDefaultAsync(p => p.Id == payoutId)` w `PayoutRepository.GetByIdAsync`",
+            "exit": "`PayoutNotFoundError`",
+            "locations": [
+              "src/Payments.Application/ConfirmPayout.cs:26",
+              "src/Payments.Infrastructure/PaymentsInfrastructure.cs:38"
+            ]
+          },
+          {
+            "no": 4,
+            "condition": "`Status != PayoutStatus.Pending` w `Payout.MarkCompleted` / `Payout.MarkFailed`",
+            "exit": "`PayoutAlreadyFinalizedError`",
+            "locations": [
+              "src/Payments.Domain/Payments.cs:66",
+              "src/Payments.Domain/Payments.cs:76"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.PayoutId).NotEmpty()` ([[code:src/Payments.Application/ConfirmPayout.cs:14|ConfirmPayout.cs:14]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`payouts`",
+            "columns": "`id`, `status`"
+          },
+          {
+            "operation": "zapis (update)",
+            "table": "`payouts`",
+            "columns": "`status` → `Completed` / `Failed`, `psp_reference`, `failure_reason`"
+          }
+        ],
+        "dataNote": null,
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "03271126a2e840d62769e081ae2f2ad9a74a4648f9c311ca84f6d8c675cf9fa8",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.OrderSettledEventHandler",
+      "module": "Payments",
+      "slug": "OrderSettledEvent",
+      "title": "Order settled",
+      "summary": "Reaguje na zdarzenie `OrderSettledEvent`.",
+      "triggers": [
+        "Automatycznie, po zdarzeniu `OrderSettledEvent` z [[page:T:Orders.Application.SettleOrderHandler]] (po zapisie)."
+      ],
+      "triggersNote": null,
+      "mainScenario": "wszystkie reguły są spełnione. Uruchamia [[page:T:Payments.Application.RequestPayoutHandler]].",
+      "alternativeScenarios": [
+        {
+          "title": "Zachodzi `notification.PayoutMethod != PayoutMethod.BankTransfer`",
+          "ruleRef": "reguła 1",
+          "text": "brak akcji, bez błędu."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Nie może zachodzić: `notification.PayoutMethod != PayoutMethod.BankTransfer`.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G1"
+          ]
+        }
+      ],
+      "effects": [
+        "Uruchamia [[page:T:Payments.Application.RequestPayoutHandler]]."
+      ],
+      "globalRules": [],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.OrderSettledEventHandler` ([[code:src/Payments.Application/OrderSettledEventHandler.cs:7|kod]])"
+          },
+          {
+            "key": "Typ",
+            "value": "`INotificationHandler<OrderSettledEvent>`"
+          },
+          {
+            "key": "Wyzwalacz",
+            "value": "`OrderSettledEvent` (domain event z `Order.Settle`, publikowany po commicie)"
+          },
+          {
+            "key": "Wysyła",
+            "value": "`RequestPayoutCommand` (`ISender.Send`)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`ISender`, `ILogger<OrderSettledEventHandler>`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`notification.PayoutMethod != PayoutMethod.BankTransfer`",
+            "exit": "`return`",
+            "locations": [
+              "src/Payments.Application/OrderSettledEventHandler.cs:13"
+            ]
+          }
+        ],
+        "dismissedNote": null,
+        "resultHandling": [
+          {
+            "call": "`sender.Send(RequestPayoutCommand)`",
+            "whenFailed": "`logger.Log…`, brak ponowienia, brak propagacji błędu",
+            "location": "src/Payments.Application/OrderSettledEventHandler.cs:19"
+          }
+        ],
+        "data": [],
+        "dataNote": "brak bezpośrednich odczytów i zapisów. Dane pochodzą z eventu.",
+        "config": [],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "2bdd3a00c54bceccd4a94de7bd6c6cbb009407ec84be891915f46e54f3aa84d9",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Application.RequestPayoutHandler",
+      "module": "Payments",
+      "slug": "RequestPayout",
+      "title": "Request payout",
+      "summary": "Obsługuje komendę `RequestPayoutCommand`.",
+      "triggers": [
+        "Wywołanie z [[page:T:Payments.Application.OrderSettledEventHandler]]."
+      ],
+      "triggersNote": null,
+      "mainScenario": "wszystkie reguły są spełnione. Tworzy [[page:T:Payments.Domain.Payout|Payout]]. Publikuje zdarzenie `PayoutRequestedEvent`.",
+      "alternativeScenarios": [
+        {
+          "title": "Niespełniona walidacja `RuleFor(x => x.Amount).GreaterThan(0)`",
+          "ruleRef": "reguła 1",
+          "text": "błąd walidacji."
+        },
+        {
+          "title": "Zachodzi `!await features.IsEnabledAsync(\"Payouts.Enabled\")`",
+          "ruleRef": "reguła 2",
+          "text": "brak akcji, bez błędu."
+        },
+        {
+          "title": "Zachodzi `await payouts.ExistsForOrderAsync(command.OrderId, ct)`",
+          "ruleRef": "reguła 3",
+          "text": "brak akcji, bez błędu."
+        },
+        {
+          "title": "Zachodzi `account is null`",
+          "ruleRef": "reguła 4",
+          "text": "błąd `AccountNotActiveError`."
+        },
+        {
+          "title": "Zachodzi `account.KycStatus != KycStatus.Verified`",
+          "ruleRef": "reguła 5",
+          "text": "błąd `KycNotVerifiedError`."
+        },
+        {
+          "title": "Zachodzi `string.IsNullOrWhiteSpace(account.Iban)`",
+          "ruleRef": "reguła 6",
+          "text": "błąd `MissingIbanError`."
+        },
+        {
+          "title": "Zachodzi `amount > maxAmount`",
+          "ruleRef": "reguła 7",
+          "text": "błąd `PayoutLimitExceededError`."
+        }
+      ],
+      "scenariosNote": null,
+      "rulesIntro": "Kolejność odpowiada kolejności sprawdzania w kodzie.",
+      "rules": [
+        {
+          "no": 1,
+          "rule": "Walidacja: `RuleFor(x => x.Amount).GreaterThan(0)`.",
+          "onFail": "Błąd walidacji.",
+          "guardIds": [
+            "G3"
+          ]
+        },
+        {
+          "no": 2,
+          "rule": "Nie może zachodzić: `!await features.IsEnabledAsync(\"Payouts.Enabled\")`.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G4"
+          ]
+        },
+        {
+          "no": 3,
+          "rule": "Nie może zachodzić: `await payouts.ExistsForOrderAsync(command.OrderId, ct)`.",
+          "onFail": "Brak akcji, bez błędu.",
+          "guardIds": [
+            "G5",
+            "G6"
+          ]
+        },
+        {
+          "no": 4,
+          "rule": "Nie może zachodzić: `account is null`.",
+          "onFail": "Błąd `AccountNotActiveError`.",
+          "guardIds": [
+            "G8",
+            "G7"
+          ]
+        },
+        {
+          "no": 5,
+          "rule": "Nie może zachodzić: `account.KycStatus != KycStatus.Verified`.",
+          "onFail": "Błąd `KycNotVerifiedError`.",
+          "guardIds": [
+            "G9"
+          ]
+        },
+        {
+          "no": 6,
+          "rule": "Nie może zachodzić: `string.IsNullOrWhiteSpace(account.Iban)`.",
+          "onFail": "Błąd `MissingIbanError`.",
+          "guardIds": [
+            "G10"
+          ]
+        },
+        {
+          "no": 7,
+          "rule": "Nie może zachodzić: `amount > maxAmount`.",
+          "onFail": "Błąd `PayoutLimitExceededError`.",
+          "guardIds": [
+            "G11"
+          ]
+        }
+      ],
+      "effects": [
+        "Tworzy [[page:T:Payments.Domain.Payout|Payout]].",
+        "Publikuje zdarzenie `PayoutRequestedEvent`."
+      ],
+      "globalRules": [
+        "T:BuildingBlocks.ValidationBehavior`2"
+      ],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Handler",
+            "value": "`Payments.Application.RequestPayoutHandler` ([[code:src/Payments.Application/RequestPayout.cs:22|kod]])"
+          },
+          {
+            "key": "Komenda",
+            "value": "`RequestPayoutCommand`"
+          },
+          {
+            "key": "Walidator",
+            "value": "`RequestPayoutCommandValidator` ([[code:src/Payments.Application/RequestPayout.cs:12|kod]])"
+          },
+          {
+            "key": "Wywoływany przez",
+            "value": "`OrderSettledEventHandler` (`ISender.Send`)"
+          },
+          {
+            "key": "Publikuje",
+            "value": "`PayoutRequestedEvent` (z `Payout.Create`, po commicie)"
+          },
+          {
+            "key": "Zależności",
+            "value": "`ICustomerAccountRepository`, `IPayoutRepository`, `IFeatureManager`, `IOptions<PayoutOptions>`, `TimeProvider`"
+          }
+        ],
+        "codeRules": [
+          {
+            "no": 1,
+            "condition": "`RuleFor(x => x.Amount).GreaterThan(0)`",
+            "exit": "`Result.Fail` (ValidationBehavior)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:18"
+            ]
+          },
+          {
+            "no": 2,
+            "condition": "`!await features.IsEnabledAsync(\"Payouts.Enabled\")`",
+            "exit": "`Result.Ok()` (cichy sukces)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:32"
+            ]
+          },
+          {
+            "no": 3,
+            "condition": "`await payouts.ExistsForOrderAsync(command.OrderId, ct)`, `AnyAsync(p => p.OrderId == orderId && p.Status != PayoutStatus.Failed)` w `PayoutRepository.ExistsForOrderAsync`",
+            "exit": "`Result.Ok()` (cichy sukces)",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:35",
+              "src/Payments.Infrastructure/PaymentsInfrastructure.cs:35"
+            ]
+          },
+          {
+            "no": 4,
+            "condition": "`account is null`, `Where(a => a.CustomerId == customerId && !a.IsBlocked)` w `CustomerAccountRepository.GetActiveAsync`",
+            "exit": "`AccountNotActiveError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:39",
+              "src/Payments.Infrastructure/PaymentsInfrastructure.cs:27"
+            ]
+          },
+          {
+            "no": 5,
+            "condition": "`account.KycStatus != KycStatus.Verified`",
+            "exit": "`KycNotVerifiedError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:42"
+            ]
+          },
+          {
+            "no": 6,
+            "condition": "`string.IsNullOrWhiteSpace(account.Iban)`",
+            "exit": "`MissingIbanError`",
+            "locations": [
+              "src/Payments.Application/RequestPayout.cs:45"
+            ]
+          },
+          {
+            "no": 7,
+            "condition": "`amount > maxAmount` w `Payout.Create`",
+            "exit": "`PayoutLimitExceededError`",
+            "locations": [
+              "src/Payments.Domain/Payments.cs:47"
+            ]
+          }
+        ],
+        "dismissedNote": "Pominięte w części biznesowej (warunki techniczne): `RuleFor(x => x.OrderId).NotEmpty()` ([[code:src/Payments.Application/RequestPayout.cs:16|RequestPayout.cs:16]]), `RuleFor(x => x.CustomerId).NotEmpty()` ([[code:src/Payments.Application/RequestPayout.cs:17|RequestPayout.cs:17]]).",
+        "resultHandling": [],
+        "data": [
+          {
+            "operation": "odczyt",
+            "table": "`customer_accounts`",
+            "columns": "`customer_id`, `is_blocked`, `kyc_status`, `iban`"
+          },
+          {
+            "operation": "zapis (insert)",
+            "table": "`payouts`",
+            "columns": "`id`, `order_id`, `customer_id`, `amount`, `iban`, `status`, `created_at`"
+          }
+        ],
+        "dataNote": null,
+        "config": [
+          {
+            "key": "`Payouts.Enabled`",
+            "meaning": "feature flag",
+            "default": "brak (zależy od konfiguracji środowiska)"
+          },
+          {
+            "key": "`Payouts:MaxAmount`",
+            "meaning": "opcja konfiguracji",
+            "default": "`20000`"
+          }
+        ],
+        "configNote": null
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "45432c186979543afe07706f6a87e761b444c198a4119294628db310df9422c9",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    }
+  ],
+  "entities": [
+    {
+      "pageId": "T:Orders.Domain.Order",
+      "module": "Orders",
+      "slug": "Order",
+      "name": "Order",
+      "description": "Encja `Order` modułu Orders.",
+      "statuses": [
+        {
+          "value": "Received",
+          "label": "Received",
+          "meaning": "Status `Received`.",
+          "isFinal": false
+        },
+        {
+          "value": "Valued",
+          "label": "Valued",
+          "meaning": "Status `Valued`.",
+          "isFinal": false
+        },
+        {
+          "value": "Settled",
+          "label": "Settled",
+          "meaning": "Status `Settled`.",
+          "isFinal": true
+        },
+        {
+          "value": "Cancelled",
+          "label": "Cancelled",
+          "meaning": "Status `Cancelled`.",
+          "isFinal": false
+        }
+      ],
+      "stateDiagram": [
+        {
+          "from": "Valued",
+          "to": "Settled",
+          "label": "Settle"
+        },
+        {
+          "from": "Settled",
+          "to": "[*]",
+          "label": null
+        }
+      ],
+      "rules": [
+        "Przejście do statusu `Settled` (`Order.Settle`) wymaga: `Status == OrderStatus.Valued`."
+      ],
+      "changes": [
+        {
+          "change": "*Valued* → *Settled*",
+          "pageId": "T:Orders.Application.SettleOrderHandler"
+        }
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Klasa",
+            "value": "`Orders.Domain.Order` ([[code:src/Orders.Domain/Order.cs:20|kod]])"
+          },
+          {
+            "key": "Eventy",
+            "value": "`OrderSettledEvent`"
+          }
+        ],
+        "fields": [
+          {
+            "field": "`Id`",
+            "column": "—",
+            "type": "`Guid`",
+            "description": "Id."
+          },
+          {
+            "field": "`CustomerId`",
+            "column": "—",
+            "type": "`Guid`",
+            "description": "Customer id."
+          },
+          {
+            "field": "`Status`",
+            "column": "—",
+            "type": "`OrderStatus`",
+            "description": "`Received`, `Valued`, `Settled`, `Cancelled`."
+          },
+          {
+            "field": "`PayoutMethod`",
+            "column": "—",
+            "type": "`PayoutMethod`",
+            "description": "`BankTransfer`, `Voucher`."
+          },
+          {
+            "field": "`AcceptedPrice`",
+            "column": "—",
+            "type": "`decimal?`",
+            "description": "Accepted price."
+          },
+          {
+            "field": "`SettledAt`",
+            "column": "—",
+            "type": "`DateTime?`",
+            "description": "Settled at."
+          }
+        ],
+        "transitions": [
+          {
+            "to": "`Settled`",
+            "method": "`Order.Settle`",
+            "condition": "`Status == OrderStatus.Valued`",
+            "location": "src/Orders.Domain/Order.cs:37"
+          }
+        ]
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "a96bb455ec32f728a456a9a9c70f599c8a5d01829feeb6ffb92734137dc307c8",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "T:Payments.Domain.Payout",
+      "module": "Payments",
+      "slug": "Payout",
+      "name": "Payout",
+      "description": "Encja `Payout` modułu Payments, tabela `payouts`.",
+      "statuses": [
+        {
+          "value": "Pending",
+          "label": "Pending",
+          "meaning": "Status `Pending`.",
+          "isFinal": false
+        },
+        {
+          "value": "Completed",
+          "label": "Completed",
+          "meaning": "Status `Completed`.",
+          "isFinal": true
+        },
+        {
+          "value": "Failed",
+          "label": "Failed",
+          "meaning": "Status `Failed`.",
+          "isFinal": true
+        }
+      ],
+      "stateDiagram": [
+        {
+          "from": "[*]",
+          "to": "Pending",
+          "label": "Create"
+        },
+        {
+          "from": "Pending",
+          "to": "Completed",
+          "label": "MarkCompleted"
+        },
+        {
+          "from": "Pending",
+          "to": "Failed",
+          "label": "MarkFailed"
+        },
+        {
+          "from": "Completed",
+          "to": "[*]",
+          "label": null
+        },
+        {
+          "from": "Failed",
+          "to": "[*]",
+          "label": null
+        }
+      ],
+      "rules": [
+        "Przejście do statusu `Pending` (`Payout.Create`) wymaga: `amount <= maxAmount`.",
+        "Przejście do statusu `Completed` (`Payout.MarkCompleted`) wymaga: `Status == PayoutStatus.Pending`.",
+        "Przejście do statusu `Failed` (`Payout.MarkFailed`) wymaga: `Status == PayoutStatus.Pending`."
+      ],
+      "changes": [
+        {
+          "change": "utworzenie (*Pending*)",
+          "pageId": "T:Payments.Application.RequestPayoutHandler"
+        },
+        {
+          "change": "*Pending* → *Completed*",
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler"
+        },
+        {
+          "change": "*Pending* → *Failed*",
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler"
+        }
+      ],
+      "technical": {
+        "summary": [
+          {
+            "key": "Klasa",
+            "value": "`Payments.Domain.Payout` ([[code:src/Payments.Domain/Payments.cs:28|kod]])"
+          },
+          {
+            "key": "Tabela",
+            "value": "`payouts`"
+          },
+          {
+            "key": "Eventy",
+            "value": "`PayoutRequestedEvent`"
+          }
+        ],
+        "fields": [
+          {
+            "field": "`Id`",
+            "column": "`id`",
+            "type": "`Guid`",
+            "description": "Id."
+          },
+          {
+            "field": "`OrderId`",
+            "column": "`order_id`",
+            "type": "`Guid`",
+            "description": "Order id."
+          },
+          {
+            "field": "`CustomerId`",
+            "column": "`customer_id`",
+            "type": "`Guid`",
+            "description": "Customer id."
+          },
+          {
+            "field": "`Amount`",
+            "column": "`amount`",
+            "type": "`decimal`",
+            "description": "Amount."
+          },
+          {
+            "field": "`Iban`",
+            "column": "`iban`",
+            "type": "`string`",
+            "description": "Iban."
+          },
+          {
+            "field": "`Status`",
+            "column": "`status`",
+            "type": "`PayoutStatus`",
+            "description": "`Pending`, `Completed`, `Failed`."
+          },
+          {
+            "field": "`PspReference`",
+            "column": "`psp_reference`",
+            "type": "`string?`",
+            "description": "Psp reference."
+          },
+          {
+            "field": "`FailureReason`",
+            "column": "`failure_reason`",
+            "type": "`string?`",
+            "description": "Failure reason."
+          },
+          {
+            "field": "`CreatedAt`",
+            "column": "`created_at`",
+            "type": "`DateTime`",
+            "description": "Created at."
+          }
+        ],
+        "transitions": [
+          {
+            "to": "`Pending`",
+            "method": "`Payout.Create`",
+            "condition": "`amount <= maxAmount`",
+            "location": "src/Payments.Domain/Payments.cs:57"
+          },
+          {
+            "to": "`Completed`",
+            "method": "`Payout.MarkCompleted`",
+            "condition": "`Status == PayoutStatus.Pending`",
+            "location": "src/Payments.Domain/Payments.cs:69"
+          },
+          {
+            "to": "`Failed`",
+            "method": "`Payout.MarkFailed`",
+            "condition": "`Status == PayoutStatus.Pending`",
+            "location": "src/Payments.Domain/Payments.cs:79"
+          }
+        ]
+      },
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "8f02354cad3b92906c2107d9ef21d2eec0674c4f428b0e8a762a2dbd324e013d",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    }
+  ],
+  "flows": [
+    {
+      "pageId": "flow:POST /orders/{orderId:guid}/settle",
+      "slug": "SettleOrderFlow",
+      "title": "Przebieg od: Settle order",
+      "description": "Kroki procesu: Settle order → Order settled → Request payout → Obsługa `PayoutRequestedEvent` (poza indeksem) → Confirm payout.",
+      "nodes": [
+        {
+          "id": "A",
+          "label": "POST /orders/{orderId:guid}/settle",
+          "shape": "step"
+        },
+        {
+          "id": "B",
+          "label": "Settle order",
+          "shape": "step"
+        },
+        {
+          "id": "C",
+          "label": "Order settled",
+          "shape": "step"
+        },
+        {
+          "id": "D",
+          "label": "notification.PayoutMethod != PayoutMethod.BankTransfer?",
+          "shape": "decision"
+        },
+        {
+          "id": "E",
+          "label": "Koniec bez dalszych kroków",
+          "shape": "end"
+        },
+        {
+          "id": "F",
+          "label": "Request payout",
+          "shape": "step"
+        },
+        {
+          "id": "G",
+          "label": "Obsługa PayoutRequestedEvent (poza indeksem)",
+          "shape": "step"
+        },
+        {
+          "id": "H",
+          "label": "Confirm payout",
+          "shape": "step"
+        },
+        {
+          "id": "I",
+          "label": "Koniec procesu",
+          "shape": "end"
+        }
+      ],
+      "edges": [
+        {
+          "from": "A",
+          "to": "B",
+          "label": null,
+          "dashed": false
+        },
+        {
+          "from": "B",
+          "to": "C",
+          "label": "po zapisie, w tle",
+          "dashed": false
+        },
+        {
+          "from": "C",
+          "to": "D",
+          "label": null,
+          "dashed": false
+        },
+        {
+          "from": "D",
+          "to": "E",
+          "label": "tak",
+          "dashed": false
+        },
+        {
+          "from": "D",
+          "to": "F",
+          "label": "nie",
+          "dashed": false
+        },
+        {
+          "from": "F",
+          "to": "G",
+          "label": "po zapisie, w tle",
+          "dashed": false
+        },
+        {
+          "from": "G",
+          "to": "H",
+          "label": "zewnętrzne wywołanie",
+          "dashed": true
+        },
+        {
+          "from": "H",
+          "to": "I",
+          "label": null,
+          "dashed": false
+        }
+      ],
+      "steps": [
+        {
+          "no": 1,
+          "pageId": "T:Orders.Application.SettleOrderHandler",
+          "label": "Settle order",
+          "module": "Orders",
+          "mode": "na żądanie (`POST /orders/{orderId:guid}/settle`)"
+        },
+        {
+          "no": 2,
+          "pageId": "T:Payments.Application.OrderSettledEventHandler",
+          "label": "Order settled",
+          "module": "Payments",
+          "mode": "w tle, po zapisie kroku 1"
+        },
+        {
+          "no": 3,
+          "pageId": "T:Payments.Application.RequestPayoutHandler",
+          "label": "Request payout",
+          "module": "Payments",
+          "mode": "wywołane przez krok 2"
+        },
+        {
+          "no": 4,
+          "pageId": null,
+          "label": "Obsługa `PayoutRequestedEvent` (poza indeksem)",
+          "module": "Payments",
+          "mode": "poza zakresem indeksu"
+        },
+        {
+          "no": 5,
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+          "label": "Confirm payout",
+          "module": "Payments",
+          "mode": "na zewnętrzne wywołanie (`POST /webhooks/psp/payouts`)"
+        }
+      ],
+      "silentStopsIntro": "W tych miejscach proces może zatrzymać się bez widocznego błędu:",
+      "silentStops": [
+        {
+          "place": "krok 2, reguła 1",
+          "reason": "Nie może zachodzić: `notification.PayoutMethod != PayoutMethod.BankTransfer`.",
+          "trace": "brak śladu w danych ani w logach"
+        },
+        {
+          "place": "krok 3, reguła 2",
+          "reason": "Nie może zachodzić: `!await features.IsEnabledAsync(\"Payouts.Enabled\")`.",
+          "trace": "brak śladu w danych ani w logach"
+        },
+        {
+          "place": "krok 3, reguła 3",
+          "reason": "Nie może zachodzić: `await payouts.ExistsForOrderAsync(command.OrderId, ct)`.",
+          "trace": "brak śladu w danych ani w logach"
+        },
+        {
+          "place": "krok 3, reguły 1 i 4–7",
+          "reason": "Błąd kroku 3 jest tylko zapisywany w logach przez krok 2, bez ponowienia.",
+          "trace": "ostrzeżenie w logach"
+        },
+        {
+          "place": "krok 5",
+          "reason": "Status `Failed` jest końcowy; nic nie wznawia procesu.",
+          "trace": "`Payout.Status = Failed`"
+        }
+      ],
+      "technical": [
+        {
+          "step": 1,
+          "input": "`POST /orders/{orderId:guid}/settle` → `SettleOrderCommand`",
+          "connection": "`Order.Settle` → `OrderSettledEvent` (domain event, po commicie)"
+        },
+        {
+          "step": 2,
+          "input": "`OrderSettledEventHandler`",
+          "connection": "`ISender.Send(RequestPayoutCommand)`, wynik tylko logowany"
+        },
+        {
+          "step": 3,
+          "input": "`RequestPayoutHandler`",
+          "connection": "`Payout.Create` → `PayoutRequestedEvent` (domain event, po commicie)"
+        },
+        {
+          "step": 4,
+          "input": "handler `PayoutRequestedEvent` (poza indeksem)",
+          "connection": "zewnętrzne wywołanie (poza indeksem)"
+        },
+        {
+          "step": 5,
+          "input": "`POST /webhooks/psp/payouts` → `ConfirmPayoutCommand`",
+          "connection": "koniec procesu"
+        }
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "b17db9f9932d49b7f558475382ab476847fa8896f3c36c9d99915da55e19be11",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    }
+  ],
+  "globalRules": [
+    {
+      "pageId": "T:BuildingBlocks.ValidationBehavior`2",
+      "slug": "ValidationBehavior",
+      "title": "Validation behavior",
+      "summary": "Zachowanie potoku `ValidationBehavior` uruchamiane wokół logiki komend.",
+      "behaviour": [
+        "Gdy `!validators.Any()`: `return` z wartością.",
+        "Gdy `failures.Count == 0`: `return` z wartością."
+      ],
+      "appliesTo": [
+        {
+          "pageId": "T:Orders.Application.SettleOrderHandler",
+          "rules": "tylko techniczne"
+        },
+        {
+          "pageId": "T:Payments.Application.ConfirmPayoutHandler",
+          "rules": "reguły 1–2"
+        },
+        {
+          "pageId": "T:Payments.Application.RequestPayoutHandler",
+          "rules": "reguła 1"
+        }
+      ],
+      "technicalSummary": [
+        {
+          "key": "Klasa",
+          "value": "`BuildingBlocks.ValidationBehavior<,>` ([[code:src/BuildingBlocks/BuildingBlocks.cs:25|kod]])"
+        },
+        {
+          "key": "Typ",
+          "value": "`IPipelineBehavior<TRequest, TResponse>`"
+        },
+        {
+          "key": "Źródło reguł",
+          "value": "wszystkie `IValidator<TRequest>` (FluentValidation) z kontenera DI"
+        },
+        {
+          "key": "Zależności",
+          "value": "`IEnumerable<IValidator<TRequest>>`"
+        }
+      ],
+      "logic": [
+        {
+          "condition": "`!validators.Any()`",
+          "exit": "`return` z wartością",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:32"
+        },
+        {
+          "condition": "`failures.Count == 0`",
+          "exit": "`return` z wartością",
+          "location": "src/BuildingBlocks/BuildingBlocks.cs:38"
+        }
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "e0222a69862f91b6633b35f814e3bd158dcc8d81cf78e71ab3ab4218217dadb6",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    }
+  ],
+  "modules": [
+    {
+      "pageId": "module:Orders",
+      "module": "Orders",
+      "title": "Moduł Orders",
+      "summary": "Przypadki użycia: Settle order.",
+      "useCases": [
+        "T:Orders.Application.SettleOrderHandler"
+      ],
+      "entities": [
+        "T:Orders.Domain.Order"
+      ],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "dependsOn": [],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "af4cb3039f181244cbe5556751523dab7da5bf89c24a3eb0f96a87cef2cb7aff",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    },
+    {
+      "pageId": "module:Payments",
+      "module": "Payments",
+      "title": "Moduł Payments",
+      "summary": "Przypadki użycia: Confirm payout, Order settled, Request payout.",
+      "useCases": [
+        "T:Payments.Application.ConfirmPayoutHandler",
+        "T:Payments.Application.OrderSettledEventHandler",
+        "T:Payments.Application.RequestPayoutHandler"
+      ],
+      "entities": [
+        "T:Payments.Domain.Payout"
+      ],
+      "flows": [
+        "flow:POST /orders/{orderId:guid}/settle"
+      ],
+      "dependsOn": [
+        "module:Orders"
+      ],
+      "meta": {
+        "sourceCommit": "a1b2c3d",
+        "cardHash": "3813363c02b5ce18f89111af0b6990553dae86231132ccde2b0b17c729d636ce",
+        "status": "offline",
+        "promptVersion": "1",
+        "model": "gpt-4.1",
+        "warnings": []
+      }
+    }
+  ],
+  "system": {
+    "pageId": "system",
+    "title": "Przegląd systemu",
+    "summary": "System składa się z modułów: Moduł Orders, Moduł Payments.",
+    "modules": [
+      {
+        "pageId": "module:Orders",
+        "summary": "Przypadki użycia: Settle order."
+      },
+      {
+        "pageId": "module:Payments",
+        "summary": "Przypadki użycia: Confirm payout, Order settled, Request payout."
+      }
+    ],
+    "meta": {
+      "sourceCommit": "a1b2c3d",
+      "cardHash": "25ecfe25231ca8dbd3b50dea407a33f4105a1d8225dfd6c59d8484f71066911c",
+      "status": "offline",
+      "promptVersion": "1",
+      "model": "gpt-4.1",
+      "warnings": []
+    }
+  },
+  "glossary": {
+    "pageId": "glossary",
+    "entries": [
+      {
+        "term": "Bank transfer",
+        "codeName": "PayoutMethod.BankTransfer",
+        "description": "Nazwa w kodzie: wartość PayoutMethod.",
+        "manual": false
+      },
+      {
+        "term": "Cancelled",
+        "codeName": "OrderStatus.Cancelled",
+        "description": "Nazwa w kodzie: wartość OrderStatus.",
+        "manual": false
+      },
+      {
+        "term": "Completed",
+        "codeName": "PayoutStatus.Completed",
+        "description": "Nazwa w kodzie: wartość PayoutStatus.",
+        "manual": false
+      },
+      {
+        "term": "Customer account",
+        "codeName": "CustomerAccount",
+        "description": "Nazwa w kodzie: encja modułu Payments.",
+        "manual": false
+      },
+      {
+        "term": "Failed",
+        "codeName": "PayoutStatus.Failed",
+        "description": "Nazwa w kodzie: wartość PayoutStatus.",
+        "manual": false
+      },
+      {
+        "term": "Kyc status",
+        "codeName": "KycStatus",
+        "description": "Nazwa w kodzie: enum pola CustomerAccount.KycStatus.",
+        "manual": false
+      },
+      {
+        "term": "Order",
+        "codeName": "Order",
+        "description": "Nazwa w kodzie: encja modułu Orders.",
+        "manual": false
+      },
+      {
+        "term": "Order status",
+        "codeName": "OrderStatus",
+        "description": "Nazwa w kodzie: enum pola Order.Status.",
+        "manual": false
+      },
+      {
+        "term": "Payout",
+        "codeName": "Payout",
+        "description": "Nazwa w kodzie: encja modułu Payments.",
+        "manual": false
+      },
+      {
+        "term": "Payout method",
+        "codeName": "PayoutMethod",
+        "description": "Nazwa w kodzie: enum pola Order.PayoutMethod.",
+        "manual": false
+      },
+      {
+        "term": "Payout status",
+        "codeName": "PayoutStatus",
+        "description": "Nazwa w kodzie: enum pola Payout.Status.",
+        "manual": false
+      },
+      {
+        "term": "Pending",
+        "codeName": "KycStatus.Pending",
+        "description": "Nazwa w kodzie: wartość KycStatus.",
+        "manual": false
+      },
+      {
+        "term": "Pending",
+        "codeName": "PayoutStatus.Pending",
+        "description": "Nazwa w kodzie: wartość PayoutStatus.",
+        "manual": false
+      },
+      {
+        "term": "Received",
+        "codeName": "OrderStatus.Received",
+        "description": "Nazwa w kodzie: wartość OrderStatus.",
+        "manual": false
+      },
+      {
+        "term": "Rejected",
+        "codeName": "KycStatus.Rejected",
+        "description": "Nazwa w kodzie: wartość KycStatus.",
+        "manual": false
+      },
+      {
+        "term": "Settled",
+        "codeName": "OrderStatus.Settled",
+        "description": "Nazwa w kodzie: wartość OrderStatus.",
+        "manual": false
+      },
+      {
+        "term": "Valued",
+        "codeName": "OrderStatus.Valued",
+        "description": "Nazwa w kodzie: wartość OrderStatus.",
+        "manual": false
+      },
+      {
+        "term": "Verified",
+        "codeName": "KycStatus.Verified",
+        "description": "Nazwa w kodzie: wartość KycStatus.",
+        "manual": false
+      },
+      {
+        "term": "Voucher",
+        "codeName": "PayoutMethod.Voucher",
+        "description": "Nazwa w kodzie: wartość PayoutMethod.",
+        "manual": false
+      }
+    ],
+    "meta": {
+      "sourceCommit": "a1b2c3d",
+      "cardHash": "7055789b2c8bc6e7c971fa7490f587be8873ba87018af9a9085fe03b36f4a817",
+      "status": "offline",
+      "promptVersion": "1",
+      "model": "gpt-4.1",
+      "warnings": []
+    }
+  }
+}
