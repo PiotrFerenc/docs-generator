@@ -23,7 +23,7 @@ docgen [--config appsettings.json] [--out <katalog>] <command>
 
   index                      Roslyn -> <WorkDir>/index.json
   check-index <expected>     porównanie index.json z oczekiwanymi guardami/krawędziami (exit 1 gdy czegoś brak)
-  cards                      -> <WorkDir>/cards.json
+  cards [--retry-review]     -> <WorkDir>/cards.json (--retry-review: ponownie przez LLM tylko karty needs_review)
   render                     -> <OutputDir>/ + .manifest.json
   publish [--dry-run]        <OutputDir> -> Confluence
   search-index               <OutputDir> -> Qdrant

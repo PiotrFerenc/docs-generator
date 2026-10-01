@@ -19,7 +19,8 @@ namespace DocGen.Cli
             Commands:
               index                      Roslyn extraction      -> <WorkDir>/index.json
               check-index <expected>     Compare index.json with expected guards/edges (exit 1 on missing)
-              cards                      LLM + deterministic    -> <WorkDir>/cards.json (cached per card hash)
+              cards [--retry-review]     LLM + deterministic    -> <WorkDir>/cards.json (cached per card hash;
+                                         --retry-review re-runs the LLM for cards with status needs_review)
               render                     Markdown pages         -> <OutputDir>/ + .manifest.json
               publish [--dry-run]        Sync <OutputDir> to Confluence
               search-index               Index <OutputDir> into Qdrant
@@ -83,7 +84,7 @@ namespace DocGen.Cli
                 {
                     "index" => await Index(Build(services, config, indexer: true), cts.Token),
                     "check-index" => CheckIndex(Build(services, config), rest),
-                    "cards" => await Cards(Build(services, config, cards: true), cts.Token),
+                    "cards" => await Cards(Build(services, config, cards: true), rest.Contains("--retry-review"), cts.Token),
                     "render" => await Render(Build(services, config, render: true), cts.Token),
                     "publish" => await Publish(Build(services, config, confluence: true), rest.Contains("--dry-run"), cts.Token),
                     "search-index" => await SearchIndex(Build(services, config, search: true), cts.Token),
@@ -141,8 +142,10 @@ namespace DocGen.Cli
             return DocGen.Indexer.IndexCheck.Run(index, Path.GetFullPath(rest[0]));
         }
 
-        static async Task<int> Cards(ServiceProvider sp, CancellationToken ct)
+        static async Task<int> Cards(ServiceProvider sp, bool retryReview, CancellationToken ct)
         {
+            if (retryReview)
+                DropReviewCache(sp);
             var index = DocGenJson.Read<CodeIndex>(WorkFile(sp, "index.json"));
             var cards = await sp.GetRequiredService<ICardGenerator>().GenerateAsync(index, ct);
             var path = WorkFile(sp, "cards.json");
@@ -153,6 +156,23 @@ namespace DocGen.Cli
                               $"{cards.GlobalRules.Count} global rules, {cards.Modules.Count} modules " +
                               $"(needs_review: {review}, offline: {offline}) -> {path}");
             return 0;
+        }
+
+        // Cache entries are keyed by CardHash, so deleting them makes the next run call the LLM again for exactly those cards.
+        static void DropReviewCache(ServiceProvider sp)
+        {
+            var file = WorkFile(sp, "cards.json");
+            if (!File.Exists(file))
+                return;
+            var cache = Path.Combine(Path.GetDirectoryName(file)!, "cache");
+            var dropped = 0;
+            foreach (var m in AllMeta(DocGenJson.Read<CardSet>(file)).Where(m => m.Status == "needs_review"))
+                foreach (var f in Directory.Exists(cache) ? Directory.GetFiles(cache, m.CardHash + ".json", SearchOption.AllDirectories) : [])
+                {
+                    File.Delete(f);
+                    dropped++;
+                }
+            Console.WriteLine($"cards: --retry-review dropped {dropped} cached needs_review cards");
         }
 
         static async Task<int> Render(ServiceProvider sp, CancellationToken ct)
@@ -224,7 +244,7 @@ namespace DocGen.Cli
             foreach (var step in new Func<Task<int>>[]
                      {
                          () => Index(sp, ct),
-                         () => Cards(sp, ct),
+                         () => Cards(sp, false, ct),
                          () => Render(sp, ct),
                          () => publish ? Publish(sp, rest.Contains("--dry-run"), ct) : Task.FromResult(0),
                          () => search ? SearchIndex(sp, ct) : Task.FromResult(0)
