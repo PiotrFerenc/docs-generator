@@ -3,16 +3,24 @@ name: package
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   zip:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Source only, no build. Publishing the zip comes later.
-      - run: git archive --format=zip --prefix=docgen/ -o docgen-${{ github.sha }}.zip HEAD
+      # Source only, no build.
+      - run: git archive --format=zip --prefix=docgen/ -o docgen.zip HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: docgen-source
-          path: docgen-${{ github.sha }}.zip
+          path: docgen.zip
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: docgen.zip
