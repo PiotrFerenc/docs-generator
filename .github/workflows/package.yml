@@ -1,10 +1,8 @@
-name: package
+name: Package source
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,13 +12,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Source only, no build.
-      - run: git archive --format=zip --prefix=docgen/ -o docgen.zip HEAD
-      - uses: actions/upload-artifact@v4
-        with:
-          name: docgen-source
-          path: docgen.zip
-      - if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: docgen.zip
+
+      - name: Pack source
+        run: |
+          # no docs from the root and no .claude; the pack is source only, never compiled
+          git ls-files | grep -v -E '^(\.claude/|[^/]+\.md$)' \
+            | tar -cf - -T - | xz -9e | base64 -w0 > docgen-source.txt
+          # ponytail: GitHub caps this at 150 KB; if exceeded, drop tests/ first
+          test "$(wc -c < docgen-source.txt)" -lt 150000
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="build-${{ github.run_number }}"
+          gh release create "$tag" docgen-source.txt \
+            --repo "${{ github.repository }}" \
+            --title "Build ${{ github.run_number }}" \
+            --notes "Source (not compiled) from commit ${{ github.sha }}: tar.xz in base64. Unpack: base64 -d docgen-source.txt | tar -xJ"
